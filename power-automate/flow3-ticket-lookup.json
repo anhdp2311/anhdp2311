@@ -95,6 +95,20 @@
             "Parse_Request_Body": ["Succeeded"]
           }
         },
+        "Sanitize_Query_Value": {
+          "type": "Compose",
+          "inputs": "@replace(replace(replace(replace(body('Parse_Request_Body')?['queryValue'], '''', ''), '\"', ''), ';', ''), '--', '')",
+          "runAfter": {
+            "Initialize_OData_Query": ["Succeeded"]
+          }
+        },
+        "Sanitize_User_Email": {
+          "type": "Compose",
+          "inputs": "@replace(replace(replace(coalesce(body('Parse_Request_Body')?['userEmail'], ''), '''', ''), ';', ''), '--', '')",
+          "runAfter": {
+            "Initialize_OData_Query": ["Succeeded"]
+          }
+        },
         "Switch_Query_Type": {
           "type": "Switch",
           "expression": "@body('Parse_Request_Body')?['queryType']",
@@ -106,7 +120,7 @@
                   "type": "SetVariable",
                   "inputs": {
                     "name": "itopQuery",
-                    "value": "SELECT UserRequest WHERE ref = '@{body('Parse_Request_Body')?['queryValue']}'"
+                    "value": "SELECT UserRequest WHERE ref = '@{outputs('Sanitize_Query_Value')}'"
                   },
                   "runAfter": {}
                 }
@@ -119,7 +133,7 @@
                   "type": "SetVariable",
                   "inputs": {
                     "name": "itopQuery",
-                    "value": "SELECT UserRequest WHERE id = @{body('Parse_Request_Body')?['queryValue']}"
+                    "value": "SELECT UserRequest WHERE id = @{int(coalesce(body('Parse_Request_Body')?['queryValue'], '0'))}"
                   },
                   "runAfter": {}
                 }
@@ -132,7 +146,7 @@
                   "type": "SetVariable",
                   "inputs": {
                     "name": "itopQuery",
-                    "value": "SELECT UserRequest JOIN Person AS P ON UserRequest.agent_id = P.id WHERE P.email = '@{body('Parse_Request_Body')?['queryValue']}' AND UserRequest.status NOT IN ('closed','resolved')"
+                    "value": "SELECT UserRequest JOIN Person AS P ON UserRequest.agent_id = P.id WHERE P.email = '@{outputs('Sanitize_Query_Value')}' AND UserRequest.status NOT IN ('closed','resolved')"
                   },
                   "runAfter": {}
                 }
@@ -145,7 +159,7 @@
                   "type": "SetVariable",
                   "inputs": {
                     "name": "itopQuery",
-                    "value": "SELECT UserRequest JOIN Person AS P ON UserRequest.caller_id = P.id WHERE P.email = '@{body('Parse_Request_Body')?['userEmail']}' AND UserRequest.status NOT IN ('closed')"
+                    "value": "SELECT UserRequest JOIN Person AS P ON UserRequest.caller_id = P.id WHERE P.email = '@{outputs('Sanitize_User_Email')}' AND UserRequest.status NOT IN ('closed')"
                   },
                   "runAfter": {}
                 }
@@ -158,7 +172,7 @@
                   "type": "SetVariable",
                   "inputs": {
                     "name": "itopQuery",
-                    "value": "SELECT UserRequest WHERE title LIKE '%@{body('Parse_Request_Body')?['queryValue']}%' OR description LIKE '%@{body('Parse_Request_Body')?['queryValue']}%'"
+                    "value": "SELECT UserRequest WHERE title LIKE '%@{outputs('Sanitize_Query_Value')}%' OR description LIKE '%@{outputs('Sanitize_Query_Value')}%'"
                   },
                   "runAfter": {}
                 }
@@ -171,14 +185,15 @@
                 "type": "SetVariable",
                 "inputs": {
                   "name": "itopQuery",
-                  "value": "SELECT UserRequest WHERE ref = '@{body('Parse_Request_Body')?['queryValue']}'"
+                  "value": "SELECT UserRequest WHERE ref = '@{outputs('Sanitize_Query_Value')}'"
                 },
                 "runAfter": {}
               }
             }
           },
           "runAfter": {
-            "Initialize_OData_Query": ["Succeeded"]
+            "Sanitize_Query_Value": ["Succeeded"],
+            "Sanitize_User_Email": ["Succeeded"]
           }
         },
         "Call_iTop_API_Search": {

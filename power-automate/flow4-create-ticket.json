@@ -1,0 +1,255 @@
+{
+  "name": "Flow4-CreateTicket",
+  "description": "Instant flow (HTTP trigger) - Được gọi từ Copilot Studio để tạo ticket mới trong iTop",
+  "properties": {
+    "connectionReferences": {
+      "shared_http": {
+        "api": { "name": "shared_http" },
+        "displayName": "HTTP"
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "itopBaseUrl": {
+          "defaultValue": "https://YOUR_ITOP_URL",
+          "type": "String"
+        },
+        "itopApiUser": {
+          "defaultValue": "api_user",
+          "type": "String"
+        },
+        "itopApiToken": {
+          "defaultValue": "@appsetting('ITOP_API_TOKEN')",
+          "type": "String"
+        },
+        "defaultTeamId": {
+          "defaultValue": 0,
+          "type": "Integer",
+          "description": "iTop Team ID mặc định để assign ticket khi tạo mới"
+        },
+        "defaultServiceId": {
+          "defaultValue": 1,
+          "type": "Integer",
+          "description": "iTop Service ID mặc định cho ticket mới"
+        }
+      },
+      "triggers": {
+        "When_HTTP_Request_Received": {
+          "type": "Request",
+          "kind": "Http",
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "description": "Tiêu đề ticket"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Mô tả chi tiết vấn đề"
+                },
+                "priority": {
+                  "type": "string",
+                  "enum": ["1", "2", "3", "4"],
+                  "description": "Mức độ ưu tiên: 1=Rất khẩn, 2=Cao, 3=Trung bình, 4=Thấp"
+                },
+                "callerEmail": {
+                  "type": "string",
+                  "description": "Email của người yêu cầu"
+                }
+              },
+              "required": ["title", "description", "priority", "callerEmail"]
+            }
+          }
+        }
+      },
+      "actions": {
+        "Parse_Request_Body": {
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@triggerBody()",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "title": { "type": "string" },
+                "description": { "type": "string" },
+                "priority": { "type": "string" },
+                "callerEmail": { "type": "string" }
+              }
+            }
+          },
+          "runAfter": {}
+        },
+        "Sanitize_Input_Title": {
+          "type": "Compose",
+          "inputs": "@replace(replace(body('Parse_Request_Body')?['title'], '\"', '\\\"'), '\\', '\\\\')",
+          "runAfter": {
+            "Parse_Request_Body": ["Succeeded"]
+          }
+        },
+        "Sanitize_Input_Description": {
+          "type": "Compose",
+          "inputs": "@replace(replace(body('Parse_Request_Body')?['description'], '\"', '\\\"'), '\\', '\\\\')",
+          "runAfter": {
+            "Parse_Request_Body": ["Succeeded"]
+          }
+        },
+        "Sanitize_Caller_Email": {
+          "type": "Compose",
+          "inputs": "@replace(replace(replace(body('Parse_Request_Body')?['callerEmail'], '''', ''), ';', ''), '--', '')",
+          "runAfter": {
+            "Parse_Request_Body": ["Succeeded"]
+          }
+        },
+        "Lookup_Caller_By_Email": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "@{parameters('itopBaseUrl')}/webservices/rest.php",
+            "headers": {
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            "body": "version=1.3&auth_user=@{parameters('itopApiUser')}&auth_token=@{parameters('itopApiToken')}&json_data={\"operation\":\"core/get\",\"class\":\"Person\",\"key\":\"SELECT Person WHERE email = '@{outputs('Sanitize_Caller_Email')}'\",\"output_fields\":\"id,friendlyname,email\"}"
+          },
+          "runAfter": {
+            "Sanitize_Input_Title": ["Succeeded"],
+            "Sanitize_Input_Description": ["Succeeded"],
+            "Sanitize_Caller_Email": ["Succeeded"]
+          }
+        },
+        "Parse_Caller_Response": {
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@body('Lookup_Caller_By_Email')",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": { "type": "integer" },
+                "objects": { "type": "object" }
+              }
+            }
+          },
+          "runAfter": {
+            "Lookup_Caller_By_Email": ["Succeeded"]
+          }
+        },
+        "Check_Caller_Found": {
+          "type": "If",
+          "expression": {
+            "and": [
+              {
+                "equals": ["@body('Parse_Caller_Response')?['code']", 0]
+              },
+              {
+                "not": {
+                  "equals": ["@body('Parse_Caller_Response')?['objects']", null]
+                }
+              }
+            ]
+          },
+          "actions": {
+            "Get_Caller_ID": {
+              "type": "Compose",
+              "inputs": "@first(values(body('Parse_Caller_Response')?['objects']))?['key']",
+              "runAfter": {}
+            },
+            "Create_Ticket_In_iTop": {
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "@{parameters('itopBaseUrl')}/webservices/rest.php",
+                "headers": {
+                  "Content-Type": "application/x-www-form-urlencoded"
+                },
+                "body": "version=1.3&auth_user=@{parameters('itopApiUser')}&auth_token=@{parameters('itopApiToken')}&json_data={\"operation\":\"core/create\",\"class\":\"UserRequest\",\"fields\":{\"title\":\"@{outputs('Sanitize_Input_Title')}\",\"description\":\"@{outputs('Sanitize_Input_Description')}\",\"priority\":\"@{body('Parse_Request_Body')?['priority']}\",\"caller_id\":\"@{outputs('Get_Caller_ID')}\",\"service_id\":@{parameters('defaultServiceId')}},\"output_fields\":\"ref,id,title,status,priority\"}"
+              },
+              "runAfter": {
+                "Get_Caller_ID": ["Succeeded"]
+              }
+            },
+            "Parse_Create_Response": {
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@body('Create_Ticket_In_iTop')",
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "objects": { "type": "object" }
+                  }
+                }
+              },
+              "runAfter": {
+                "Create_Ticket_In_iTop": ["Succeeded"]
+              }
+            },
+            "Return_Create_Success": {
+              "type": "Response",
+              "kind": "Http",
+              "inputs": {
+                "statusCode": 200,
+                "headers": { "Content-Type": "application/json" },
+                "body": {
+                  "success": true,
+                  "ticketRef": "@{first(values(body('Parse_Create_Response')?['objects']))?['fields']?['ref']}",
+                  "ticketId": "@{first(values(body('Parse_Create_Response')?['objects']))?['key']}",
+                  "message": "Ticket đã được tạo thành công"
+                }
+              },
+              "runAfter": {
+                "Parse_Create_Response": ["Succeeded"]
+              }
+            }
+          },
+          "else": {
+            "actions": {
+              "Return_Caller_Not_Found": {
+                "type": "Response",
+                "kind": "Http",
+                "inputs": {
+                  "statusCode": 200,
+                  "headers": { "Content-Type": "application/json" },
+                  "body": {
+                    "success": false,
+                    "message": "Không tìm thấy người dùng với email '@{outputs('Sanitize_Caller_Email')}' trong hệ thống iTop. Vui lòng liên hệ admin để được hỗ trợ."
+                  }
+                },
+                "runAfter": {}
+              }
+            }
+          },
+          "runAfter": {
+            "Parse_Caller_Response": ["Succeeded"]
+          }
+        },
+        "Handle_API_Error": {
+          "type": "Response",
+          "kind": "Http",
+          "inputs": {
+            "statusCode": 500,
+            "body": {
+              "success": false,
+              "message": "Lỗi khi tạo ticket. Vui lòng thử lại hoặc truy cập trực tiếp iTop portal.",
+              "details": "@{body('Lookup_Caller_By_Email')}"
+            }
+          },
+          "runAfter": {
+            "Lookup_Caller_By_Email": ["Failed", "TimedOut"]
+          }
+        }
+      }
+    }
+  },
+  "setup_instructions": {
+    "step1": "Import flow vào Power Automate",
+    "step2": "Cấu hình parameters: itopBaseUrl, itopApiUser, itopApiToken",
+    "step3": "Cấu hình defaultTeamId (ID team mặc định trong iTop) và defaultServiceId",
+    "step4": "Sau khi lưu, copy HTTP POST URL và cập nhật vào Copilot Studio topic create-ticket.yaml",
+    "step5": "Đảm bảo iTop API user có quyền tạo UserRequest (permission 'create' trên class UserRequest)",
+    "note_caller": "Flow tự động lookup caller theo email Teams để điền caller_id trong ticket iTop"
+  }
+}

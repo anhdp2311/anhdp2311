@@ -121,21 +121,17 @@ beginDialog:
           actions:
             - kind: InvokeFlowAction
               id: callCreateTicketFlow
-              flowId: flow3-ticket-lookup
+              flowId: flow4-create-ticket
               input:
                 binding:
-                  queryType: ='"create_ticket"'
-                  queryValue: =Topic.TicketTitle
-                  userEmail: =System.User.Email
-                  ticketData:
-                    title: =Topic.TicketTitle
-                    description: =Topic.TicketDescription
-                    priority: =Topic.TicketPriority
-                    callerEmail: =System.User.Email
+                  title: =Topic.TicketTitle
+                  description: =Topic.TicketDescription
+                  priority: =Topic.TicketPriority
+                  callerEmail: =System.User.Email
               output:
                 binding:
-                  found: Topic.CreateSuccess
-                  ticket: Topic.CreatedTicket
+                  success: Topic.CreateSuccess
+                  ticketRef: Topic.CreatedTicketRef
 
             - kind: ConditionGroup
               id: checkCreateResult
@@ -145,7 +141,7 @@ beginDialog:
                   actions:
                     - kind: SendMessage
                       id: sendSuccess
-                      message: "✅ Ticket **{Topic.CreatedTicket.ref}** đã được tạo thành công! Đội ngũ hỗ trợ sẽ liên hệ với bạn sớm."
+                      message: "✅ Ticket **{Topic.CreatedTicketRef}** đã được tạo thành công! Đội ngũ hỗ trợ sẽ liên hệ với bạn sớm."
 
                 - id: failure
                   condition: =Topic.CreateSuccess = false

@@ -21,7 +21,7 @@
 | iTop | Version 3.0+ với REST API enabled |
 | Network | Power Automate có thể kết nối tới iTop URL |
 
-> ⚠️ **Lưu ý:** Nếu iTop đặt trong mạng nội bộ (on-premise), cần cài [On-premises data gateway](https://learn.microsoft.com/en-us/data-integration/gateway/service-gateway-install) và sử dụng connector "HTTP with Azure AD" hoặc custom connector.
+> ⚠️ **Lưu ý:** Nếu iTop đặt trong mạng nội bộ (on-premise), cần cài [On-premises data gateway](https://learn.microsoft.com/en-us/data-integration/gateway/service-gateway-install) và cấu hình HTTP connector trong Power Automate để route traffic qua gateway. iTop sử dụng cơ chế xác thực riêng (username/token), không dùng Azure AD authentication.
 
 ---
 
@@ -104,9 +104,7 @@ Vào **Solutions** → **New Solution** → tạo Solution tên `eService Agent`
    - `teamsTeamId` và `teamsChannelId`
 5. **Lưu và bật flow**
 
-> 📅 Flow 1 chạy lúc **8:00, 12:00, 17:00** các ngày trong tuần (múi giờ Hà Nội - SE Asia Standard Time)
-> 
-> Để thêm lịch 12h và 17h: Duplicate flow và thay đổi giờ trong Recurrence trigger
+> 📅 Flow 1 chỉ có một trigger cho lúc **8:00 sáng**. Để gửi báo cáo lúc **12:00** và **17:00**, cần tạo thêm 2 flow riêng (duplicate flow và thay đổi giờ trong Recurrence trigger), hoặc dùng **multiple schedules** nếu Power Automate cho phép trong plan của bạn.
 
 ### 2.4 Import Flow 2 - SLA Breach Check
 
@@ -125,6 +123,16 @@ Vào **Solutions** → **New Solution** → tạo Solution tên `eService Agent`
 4. Mở flow → Xem trigger **"When a HTTP request is received"**
 5. **Copy HTTP POST URL** (dạng: `https://prod-XX.westus.logic.azure.com:443/workflows/...`)
 6. Lưu URL này để dùng trong Copilot Studio
+
+### 2.6 Import Flow 4 - Create Ticket
+
+1. Import file `power-automate/flow4-create-ticket.json`
+2. Cấu hình parameters:
+   - `itopBaseUrl`, `itopApiUser`, `itopApiToken`
+   - `defaultTeamId`: ID team mặc định trong iTop (xem trong iTop Admin)
+   - `defaultServiceId`: ID service mặc định (xem trong iTop Admin)
+3. **Lưu flow**
+4. Copy HTTP POST URL để dùng trong topic `create-ticket.yaml`
 
 ---
 

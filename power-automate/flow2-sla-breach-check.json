@@ -45,6 +45,11 @@
           "defaultValue": 4,
           "type": "Integer",
           "description": "Cảnh báo khi ticket không được cập nhật trong X giờ"
+        },
+        "reportTimeZone": {
+          "defaultValue": "SE Asia Standard Time",
+          "type": "String",
+          "description": "Múi giờ để hiển thị thời gian báo cáo (Windows timezone name)"
         }
       },
       "triggers": {
@@ -161,9 +166,16 @@
             "Call_iTop_API_SLA_Breached": ["Succeeded"]
           }
         },
+        "Convert_Breached_Tickets_To_Array": {
+          "type": "Compose",
+          "inputs": "@values(body('Parse_Breached_Tickets')?['objects'])",
+          "runAfter": {
+            "Parse_Breached_Tickets": ["Succeeded"]
+          }
+        },
         "Send_Alert_For_Each_Breached_Ticket": {
           "type": "Foreach",
-          "foreach": "@body('Parse_Breached_Tickets')?['objects']",
+          "foreach": "@outputs('Convert_Breached_Tickets_To_Array')",
           "actions": {
             "Calculate_Overdue_Time": {
               "type": "Compose",
@@ -194,7 +206,7 @@
                       },
                       {
                         "type": "TextBlock",
-                        "text": "Phát hiện lúc: @{formatDateTime(convertTimeZone(utcNow(), 'UTC', 'SE Asia Standard Time'), 'dd/MM/yyyy HH:mm')}",
+                        "text": "Phát hiện lúc: @{formatDateTime(convertTimeZone(utcNow(), 'UTC', parameters('reportTimeZone')), 'dd/MM/yyyy HH:mm')}",
                         "size": "Small",
                         "isSubtle": true
                       }
@@ -268,7 +280,7 @@
             }
           },
           "runAfter": {
-            "Parse_Breached_Tickets": ["Succeeded"]
+            "Convert_Breached_Tickets_To_Array": ["Succeeded"]
           }
         }
       }

@@ -52,7 +52,7 @@ beginDialog:
             - kind: SetVariable
               id: calcBreached
               variable: Topic.BreachedCount
-              value: =countIf(Topic.AllOpenTickets, item.fields.ttr_deadline < utcNow())
+              value: =CountRows(Filter(Topic.AllOpenTickets, fields.ttr_deadline < Text(Now(), "yyyy-MM-dd hh:mm:ss")))
 
             - kind: SendActivity
               id: sendDashboard

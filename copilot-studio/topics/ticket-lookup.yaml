@@ -29,7 +29,7 @@ beginDialog:
       entity: StringPrebuiltEntity
       validation:
         defaultInvalidPrompt: "⚠️ Mã ticket không hợp lệ. Vui lòng nhập đúng định dạng (ví dụ: R-001234)"
-        condition: "=matches(Topic.TicketRef, \"R-[0-9]{6,}\")"
+        condition: "=startsWith(Topic.TicketRef, \"R-\") && length(Topic.TicketRef) >= 7"
 
     - kind: InvokeFlowAction
       id: callTicketLookupFlow

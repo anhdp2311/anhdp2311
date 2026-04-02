@@ -45,6 +45,11 @@ powerAutomateFlows:
     description: Flow chính để tra cứu và tương tác với iTop API
     file: ../power-automate/flow3-ticket-lookup.json
 
+  - id: flow4-create-ticket
+    name: Flow4 - Create Ticket (HTTP Trigger)
+    description: Flow tạo ticket mới trong iTop từ Copilot Studio
+    file: ../power-automate/flow4-create-ticket.json
+
   - id: flow1-daily-summary
     name: Flow1 - Daily Summary (Scheduled)
     description: Gửi báo cáo tổng hợp định kỳ vào Teams
@@ -68,7 +73,7 @@ variables:
   global:
     - name: itopBaseUrl
       type: string
-      description: URL gốc của iTop portal
+      description: URL gốc của iTop portal (ví dụ: https://itop.company.com) - dùng bằng Global.itopBaseUrl trong topics
       source: environment
 
     - name: teamsGroupChatId

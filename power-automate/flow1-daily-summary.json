@@ -45,6 +45,11 @@
         "teamsChannelId": {
           "defaultValue": "YOUR_TEAMS_CHANNEL_ID",
           "type": "String"
+        },
+        "reportTimeZone": {
+          "defaultValue": "SE Asia Standard Time",
+          "type": "String",
+          "description": "Múi giờ để hiển thị thời gian báo cáo (Windows timezone name)"
         }
       },
       "triggers": {
@@ -63,13 +68,6 @@
         }
       },
       "actions": {
-        "Get_Current_Time": {
-          "type": "Expression",
-          "inputs": {
-            "value": "@{utcNow()}"
-          },
-          "runAfter": {}
-        },
         "Initialize_Report_Time": {
           "type": "InitializeVariable",
           "inputs": {
@@ -77,7 +75,7 @@
               {
                 "name": "reportTime",
                 "type": "string",
-                "value": "@{formatDateTime(convertTimeZone(utcNow(), 'UTC', 'SE Asia Standard Time'), 'dd/MM/yyyy HH:mm')}"
+                "value": "@{formatDateTime(convertTimeZone(utcNow(), 'UTC', parameters('reportTimeZone')), 'dd/MM/yyyy HH:mm')}"
               }
             ]
           },
@@ -199,9 +197,16 @@
             "Initialize_Agent_Stats": ["Succeeded"]
           }
         },
+        "Convert_Tickets_To_Array": {
+          "type": "Compose",
+          "inputs": "@values(body('Parse_Open_Tickets_Response')?['objects'])",
+          "runAfter": {
+            "Initialize_Top5_List": ["Succeeded"]
+          }
+        },
         "Process_Each_Ticket": {
           "type": "Foreach",
-          "foreach": "@items('Process_Each_Ticket')",
+          "foreach": "@outputs('Convert_Tickets_To_Array')",
           "actions": {
             "Increment_Total_Open": {
               "type": "IncrementVariable",
@@ -247,7 +252,7 @@
             }
           },
           "runAfter": {
-            "Initialize_Top5_List": ["Succeeded"]
+            "Convert_Tickets_To_Array": ["Succeeded"]
           }
         },
         "Build_Summary_Card": {

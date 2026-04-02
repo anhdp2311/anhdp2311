@@ -91,43 +91,35 @@
           "spacing": "Medium"
         },
         {
-          "type": "Table",
-          "gridStyle": "accent",
-          "firstRowAsHeader": true,
+          "type": "ColumnSet",
+          "separator": true,
           "columns": [
-            { "width": 3 },
-            { "width": 1 },
-            { "width": 1 },
-            { "width": 1 }
-          ],
-          "rows": [
             {
-              "type": "TableRow",
-              "cells": [
-                {
-                  "type": "TableCell",
-                  "items": [
-                    { "type": "TextBlock", "text": "Agent", "weight": "Bolder" }
-                  ]
-                },
-                {
-                  "type": "TableCell",
-                  "items": [
-                    { "type": "TextBlock", "text": "Mở", "weight": "Bolder" }
-                  ]
-                },
-                {
-                  "type": "TableCell",
-                  "items": [
-                    { "type": "TextBlock", "text": "Vi phạm SLA", "weight": "Bolder" }
-                  ]
-                },
-                {
-                  "type": "TableCell",
-                  "items": [
-                    { "type": "TextBlock", "text": "Ưu tiên cao", "weight": "Bolder" }
-                  ]
-                }
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                { "type": "TextBlock", "text": "Agent", "weight": "Bolder", "size": "Small" }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                { "type": "TextBlock", "text": "Mở", "weight": "Bolder", "size": "Small" }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                { "type": "TextBlock", "text": "Vi phạm SLA", "weight": "Bolder", "size": "Small", "color": "Attention" }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                { "type": "TextBlock", "text": "Ưu tiên cao", "weight": "Bolder", "size": "Small", "color": "Warning" }
               ]
             }
           ]

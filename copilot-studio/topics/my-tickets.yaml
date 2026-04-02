@@ -125,7 +125,7 @@ beginDialog:
                           actions:
                             - type: Action.OpenUrl
                               title: "Xem chi tiết"
-                              url: "=concat(parameters('itopBaseUrl'), '/pages/UI.php?operation=details&class=UserRequest&id=', Topic.CurrentTicket.fields.id)"
+                              url: "=Concatenate(Global.itopBaseUrl, '/pages/UI.php?operation=details&class=UserRequest&id=', Text(Topic.CurrentTicket.fields.id))"
 
         - id: noTickets
           condition: =Topic.TicketsFound = false
