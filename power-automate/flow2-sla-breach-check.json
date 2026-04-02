@@ -1,0 +1,286 @@
+{
+  "name": "Flow2-SLABreachCheck",
+  "description": "Scheduled flow - Kiểm tra vi phạm SLA mỗi 30 phút, gửi cảnh báo vào Teams khi phát hiện ticket quá hạn hoặc không được cập nhật",
+  "properties": {
+    "connectionReferences": {
+      "shared_teams": {
+        "api": { "name": "shared_teams" },
+        "displayName": "Microsoft Teams"
+      },
+      "shared_http": {
+        "api": { "name": "shared_http" },
+        "displayName": "HTTP"
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "itopBaseUrl": {
+          "defaultValue": "https://YOUR_ITOP_URL",
+          "type": "String"
+        },
+        "itopApiUser": {
+          "defaultValue": "api_user",
+          "type": "String"
+        },
+        "itopApiToken": {
+          "defaultValue": "@appsetting('ITOP_API_TOKEN')",
+          "type": "String"
+        },
+        "teamsTeamId": {
+          "defaultValue": "YOUR_TEAMS_TEAM_ID",
+          "type": "String"
+        },
+        "teamsChannelId": {
+          "defaultValue": "YOUR_TEAMS_CHANNEL_ID",
+          "type": "String"
+        },
+        "slaWarningThresholdMinutes": {
+          "defaultValue": 60,
+          "type": "Integer",
+          "description": "Cảnh báo khi còn ít hơn X phút trước khi hết hạn SLA"
+        },
+        "noUpdateThresholdHours": {
+          "defaultValue": 4,
+          "type": "Integer",
+          "description": "Cảnh báo khi ticket không được cập nhật trong X giờ"
+        }
+      },
+      "triggers": {
+        "Recurrence_Every_30_Minutes": {
+          "type": "Recurrence",
+          "recurrence": {
+            "frequency": "Minute",
+            "interval": 30,
+            "timeZone": "SE Asia Standard Time"
+          }
+        }
+      },
+      "actions": {
+        "Get_Current_UTC_Time": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "currentUtcTime",
+                "type": "string",
+                "value": "@{utcNow()}"
+              }
+            ]
+          },
+          "runAfter": {}
+        },
+        "Calculate_SLA_Warning_Threshold": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "slaWarningTime",
+                "type": "string",
+                "value": "@{addMinutes(utcNow(), parameters('slaWarningThresholdMinutes'))}"
+              }
+            ]
+          },
+          "runAfter": {
+            "Get_Current_UTC_Time": ["Succeeded"]
+          }
+        },
+        "Calculate_No_Update_Threshold": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "noUpdateThreshold",
+                "type": "string",
+                "value": "@{addHours(utcNow(), mul(parameters('noUpdateThresholdHours'), -1))}"
+              }
+            ]
+          },
+          "runAfter": {
+            "Calculate_SLA_Warning_Threshold": ["Succeeded"]
+          }
+        },
+        "Call_iTop_API_SLA_Breached": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "@{parameters('itopBaseUrl')}/webservices/rest.php",
+            "headers": {
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            "body": "version=1.3&auth_user=@{parameters('itopApiUser')}&auth_token=@{parameters('itopApiToken')}&json_data={\"operation\":\"core/get\",\"class\":\"UserRequest\",\"key\":\"SELECT UserRequest WHERE status NOT IN ('closed','resolved') AND ttr_deadline < NOW()\",\"output_fields\":\"ref,id,title,caller_id,agent_id,team_id,status,priority,ttr_deadline,tto_deadline,last_update,escalation_flag,description\"}"
+          },
+          "runAfter": {
+            "Calculate_No_Update_Threshold": ["Succeeded"]
+          }
+        },
+        "Call_iTop_API_SLA_Warning": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "@{parameters('itopBaseUrl')}/webservices/rest.php",
+            "headers": {
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            "body": "version=1.3&auth_user=@{parameters('itopApiUser')}&auth_token=@{parameters('itopApiToken')}&json_data={\"operation\":\"core/get\",\"class\":\"UserRequest\",\"key\":\"SELECT UserRequest WHERE status NOT IN ('closed','resolved') AND ttr_deadline > NOW() AND ttr_deadline < DATE_ADD(NOW(), INTERVAL 1 HOUR)\",\"output_fields\":\"ref,id,title,caller_id,agent_id,team_id,status,priority,ttr_deadline,last_update\"}"
+          },
+          "runAfter": {
+            "Calculate_No_Update_Threshold": ["Succeeded"]
+          }
+        },
+        "Call_iTop_API_No_Update": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "@{parameters('itopBaseUrl')}/webservices/rest.php",
+            "headers": {
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            "body": "version=1.3&auth_user=@{parameters('itopApiUser')}&auth_token=@{parameters('itopApiToken')}&json_data={\"operation\":\"core/get\",\"class\":\"UserRequest\",\"key\":\"SELECT UserRequest WHERE status NOT IN ('closed','resolved') AND last_update < DATE_SUB(NOW(), INTERVAL @{parameters('noUpdateThresholdHours')} HOUR) AND priority IN ('1','2')\",\"output_fields\":\"ref,id,title,caller_id,agent_id,team_id,status,priority,ttr_deadline,last_update\"}"
+          },
+          "runAfter": {
+            "Calculate_No_Update_Threshold": ["Succeeded"]
+          }
+        },
+        "Parse_Breached_Tickets": {
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@body('Call_iTop_API_SLA_Breached')",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": { "type": "integer" },
+                "objects": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Call_iTop_API_SLA_Breached": ["Succeeded"]
+          }
+        },
+        "Send_Alert_For_Each_Breached_Ticket": {
+          "type": "Foreach",
+          "foreach": "@body('Parse_Breached_Tickets')?['objects']",
+          "actions": {
+            "Calculate_Overdue_Time": {
+              "type": "Compose",
+              "inputs": {
+                "overdueMinutes": "@{div(sub(ticks(utcNow()), ticks(items('Send_Alert_For_Each_Breached_Ticket')?['fields']?['ttr_deadline'])), 600000000)}",
+                "agentName": "@{coalesce(items('Send_Alert_For_Each_Breached_Ticket')?['fields']?['agent_id_friendlyname'], 'Chưa assign')}",
+                "priority": "@{items('Send_Alert_For_Each_Breached_Ticket')?['fields']?['priority']}"
+              },
+              "runAfter": {}
+            },
+            "Build_SLA_Breach_Alert_Card": {
+              "type": "Compose",
+              "inputs": {
+                "type": "AdaptiveCard",
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "version": "1.4",
+                "body": [
+                  {
+                    "type": "Container",
+                    "style": "attention",
+                    "items": [
+                      {
+                        "type": "TextBlock",
+                        "text": "🚨 CẢNH BÁO VI PHẠM SLA",
+                        "weight": "Bolder",
+                        "size": "Large",
+                        "color": "Attention"
+                      },
+                      {
+                        "type": "TextBlock",
+                        "text": "Phát hiện lúc: @{formatDateTime(convertTimeZone(utcNow(), 'UTC', 'SE Asia Standard Time'), 'dd/MM/yyyy HH:mm')}",
+                        "size": "Small",
+                        "isSubtle": true
+                      }
+                    ]
+                  },
+                  {
+                    "type": "FactSet",
+                    "facts": [
+                      {
+                        "title": "🎫 Ticket:",
+                        "value": "@{items('Send_Alert_For_Each_Breached_Ticket')?['fields']?['ref']}"
+                      },
+                      {
+                        "title": "📝 Tiêu đề:",
+                        "value": "@{items('Send_Alert_For_Each_Breached_Ticket')?['fields']?['title']}"
+                      },
+                      {
+                        "title": "🧑‍💼 Agent:",
+                        "value": "@{outputs('Calculate_Overdue_Time')?['agentName']}"
+                      },
+                      {
+                        "title": "⚡ Ưu tiên:",
+                        "value": "@{outputs('Calculate_Overdue_Time')?['priority']}"
+                      },
+                      {
+                        "title": "📅 Hạn SLA:",
+                        "value": "@{items('Send_Alert_For_Each_Breached_Ticket')?['fields']?['ttr_deadline']}"
+                      },
+                      {
+                        "title": "⏰ Quá hạn:",
+                        "value": "@{outputs('Calculate_Overdue_Time')?['overdueMinutes']} phút"
+                      },
+                      {
+                        "title": "🔄 Cập nhật cuối:",
+                        "value": "@{items('Send_Alert_For_Each_Breached_Ticket')?['fields']?['last_update']}"
+                      }
+                    ]
+                  }
+                ],
+                "actions": [
+                  {
+                    "type": "Action.OpenUrl",
+                    "title": "🔍 Xem Ticket",
+                    "url": "@{parameters('itopBaseUrl')}/pages/UI.php?operation=details&class=UserRequest&id=@{items('Send_Alert_For_Each_Breached_Ticket')?['fields']?['id']}"
+                  }
+                ]
+              },
+              "runAfter": {
+                "Calculate_Overdue_Time": ["Succeeded"]
+              }
+            },
+            "Post_SLA_Breach_Alert": {
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_teams",
+                  "operationId": "PostMessageToConversation",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams"
+                },
+                "parameters": {
+                  "poster": "Flow bot",
+                  "location": "Channel",
+                  "body/messageBody": "@{outputs('Build_SLA_Breach_Alert_Card')}",
+                  "body/recipient/groupId": "@{parameters('teamsTeamId')}",
+                  "body/recipient/channelId": "@{parameters('teamsChannelId')}"
+                }
+              },
+              "runAfter": {
+                "Build_SLA_Breach_Alert_Card": ["Succeeded"]
+              }
+            }
+          },
+          "runAfter": {
+            "Parse_Breached_Tickets": ["Succeeded"]
+          }
+        }
+      }
+    }
+  },
+  "setup_instructions": {
+    "step1": "Import flow vào Power Automate",
+    "step2": "Cấu hình parameters: itopBaseUrl, itopApiUser, itopApiToken",
+    "step3": "Điều chỉnh slaWarningThresholdMinutes (mặc định 60 phút) và noUpdateThresholdHours (mặc định 4 giờ)",
+    "step4": "Kết nối Microsoft Teams",
+    "step5": "Bật flow và test với một ticket quá hạn",
+    "note_performance": "Flow gọi 3 API song song (SLA breached, SLA warning, no-update) để tăng hiệu năng",
+    "note_priority": "Cảnh báo 'no update' chỉ áp dụng cho ticket ưu tiên 1 và 2 (P1/P2)"
+  }
+}

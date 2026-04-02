@@ -1,0 +1,346 @@
+{
+  "name": "Flow3-TicketLookup",
+  "description": "Instant flow (HTTP trigger) - Được gọi từ Copilot Studio để tra cứu thông tin ticket theo mã số hoặc từ khóa",
+  "properties": {
+    "connectionReferences": {
+      "shared_http": {
+        "api": { "name": "shared_http" },
+        "displayName": "HTTP"
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "itopBaseUrl": {
+          "defaultValue": "https://YOUR_ITOP_URL",
+          "type": "String"
+        },
+        "itopApiUser": {
+          "defaultValue": "api_user",
+          "type": "String"
+        },
+        "itopApiToken": {
+          "defaultValue": "@appsetting('ITOP_API_TOKEN')",
+          "type": "String"
+        }
+      },
+      "triggers": {
+        "When_HTTP_Request_Received": {
+          "type": "Request",
+          "kind": "Http",
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "queryType": {
+                  "type": "string",
+                  "enum": ["ticket_ref", "ticket_id", "agent_tickets", "keyword_search", "my_tickets"],
+                  "description": "Loại truy vấn"
+                },
+                "queryValue": {
+                  "type": "string",
+                  "description": "Giá trị tìm kiếm (mã ticket, ID, email agent, từ khóa)"
+                },
+                "userEmail": {
+                  "type": "string",
+                  "description": "Email của user đang tra cứu (để lọc ticket cá nhân)"
+                },
+                "statusFilter": {
+                  "type": "string",
+                  "description": "Lọc theo trạng thái: open, all, closed",
+                  "default": "open"
+                },
+                "maxResults": {
+                  "type": "integer",
+                  "description": "Số kết quả tối đa trả về",
+                  "default": 10
+                }
+              },
+              "required": ["queryType", "queryValue"]
+            }
+          }
+        }
+      },
+      "actions": {
+        "Parse_Request_Body": {
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@triggerBody()",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "queryType": { "type": "string" },
+                "queryValue": { "type": "string" },
+                "userEmail": { "type": "string" },
+                "statusFilter": { "type": "string" },
+                "maxResults": { "type": "integer" }
+              }
+            }
+          },
+          "runAfter": {}
+        },
+        "Initialize_OData_Query": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "itopQuery",
+                "type": "string",
+                "value": ""
+              }
+            ]
+          },
+          "runAfter": {
+            "Parse_Request_Body": ["Succeeded"]
+          }
+        },
+        "Switch_Query_Type": {
+          "type": "Switch",
+          "expression": "@body('Parse_Request_Body')?['queryType']",
+          "cases": {
+            "ticket_ref": {
+              "case": "ticket_ref",
+              "actions": {
+                "Set_Query_By_Ref": {
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "itopQuery",
+                    "value": "SELECT UserRequest WHERE ref = '@{body('Parse_Request_Body')?['queryValue']}'"
+                  },
+                  "runAfter": {}
+                }
+              }
+            },
+            "ticket_id": {
+              "case": "ticket_id",
+              "actions": {
+                "Set_Query_By_ID": {
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "itopQuery",
+                    "value": "SELECT UserRequest WHERE id = @{body('Parse_Request_Body')?['queryValue']}"
+                  },
+                  "runAfter": {}
+                }
+              }
+            },
+            "agent_tickets": {
+              "case": "agent_tickets",
+              "actions": {
+                "Set_Query_Agent_Tickets": {
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "itopQuery",
+                    "value": "SELECT UserRequest JOIN Person AS P ON UserRequest.agent_id = P.id WHERE P.email = '@{body('Parse_Request_Body')?['queryValue']}' AND UserRequest.status NOT IN ('closed','resolved')"
+                  },
+                  "runAfter": {}
+                }
+              }
+            },
+            "my_tickets": {
+              "case": "my_tickets",
+              "actions": {
+                "Set_Query_My_Tickets": {
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "itopQuery",
+                    "value": "SELECT UserRequest JOIN Person AS P ON UserRequest.caller_id = P.id WHERE P.email = '@{body('Parse_Request_Body')?['userEmail']}' AND UserRequest.status NOT IN ('closed')"
+                  },
+                  "runAfter": {}
+                }
+              }
+            },
+            "keyword_search": {
+              "case": "keyword_search",
+              "actions": {
+                "Set_Query_Keyword": {
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "itopQuery",
+                    "value": "SELECT UserRequest WHERE title LIKE '%@{body('Parse_Request_Body')?['queryValue']}%' OR description LIKE '%@{body('Parse_Request_Body')?['queryValue']}%'"
+                  },
+                  "runAfter": {}
+                }
+              }
+            }
+          },
+          "default": {
+            "actions": {
+              "Set_Default_Query": {
+                "type": "SetVariable",
+                "inputs": {
+                  "name": "itopQuery",
+                  "value": "SELECT UserRequest WHERE ref = '@{body('Parse_Request_Body')?['queryValue']}'"
+                },
+                "runAfter": {}
+              }
+            }
+          },
+          "runAfter": {
+            "Initialize_OData_Query": ["Succeeded"]
+          }
+        },
+        "Call_iTop_API_Search": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "@{parameters('itopBaseUrl')}/webservices/rest.php",
+            "headers": {
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            "body": "version=1.3&auth_user=@{parameters('itopApiUser')}&auth_token=@{parameters('itopApiToken')}&json_data={\"operation\":\"core/get\",\"class\":\"UserRequest\",\"key\":\"@{encodeUriComponent(variables('itopQuery'))}\",\"output_fields\":\"ref,id,title,description,caller_id,agent_id,team_id,status,priority,start_date,tto_deadline,ttr_deadline,last_update,escalation_flag,public_log\",\"limit\":@{coalesce(body('Parse_Request_Body')?['maxResults'], 10)}}"
+          },
+          "runAfter": {
+            "Switch_Query_Type": ["Succeeded"]
+          }
+        },
+        "Parse_Search_Results": {
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@body('Call_iTop_API_Search')",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": { "type": "integer" },
+                "message": { "type": "string" },
+                "objects": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Call_iTop_API_Search": ["Succeeded"]
+          }
+        },
+        "Check_Results_Found": {
+          "type": "If",
+          "expression": {
+            "and": [
+              {
+                "equals": ["@body('Parse_Search_Results')?['code']", 0]
+              },
+              {
+                "not": {
+                  "equals": ["@body('Parse_Search_Results')?['objects']", null]
+                }
+              }
+            ]
+          },
+          "actions": {
+            "Get_First_Ticket": {
+              "type": "Compose",
+              "inputs": "@first(items(body('Parse_Search_Results')?['objects']))",
+              "runAfter": {}
+            },
+            "Calculate_SLA_Status": {
+              "type": "Compose",
+              "inputs": {
+                "isBreached": "@greater(utcNow(), coalesce(first(items(body('Parse_Search_Results')?['objects']))?['fields']?['ttr_deadline'], '9999-12-31'))",
+                "isWarning": "@and(not(greater(utcNow(), coalesce(first(items(body('Parse_Search_Results')?['objects']))?['fields']?['ttr_deadline'], '9999-12-31'))), less(sub(ticks(coalesce(first(items(body('Parse_Search_Results')?['objects']))?['fields']?['ttr_deadline'], '9999-12-31')), ticks(utcNow())), 36000000000))"
+              },
+              "runAfter": {
+                "Get_First_Ticket": ["Succeeded"]
+              }
+            },
+            "Build_Response_Payload": {
+              "type": "Compose",
+              "inputs": {
+                "found": true,
+                "count": "@length(items(body('Parse_Search_Results')?['objects']))",
+                "ticket": {
+                  "ref": "@{first(items(body('Parse_Search_Results')?['objects']))?['fields']?['ref']}",
+                  "id": "@{first(items(body('Parse_Search_Results')?['objects']))?['fields']?['id']}",
+                  "title": "@{first(items(body('Parse_Search_Results')?['objects']))?['fields']?['title']}",
+                  "description": "@{first(items(body('Parse_Search_Results')?['objects']))?['fields']?['description']}",
+                  "status": "@{first(items(body('Parse_Search_Results')?['objects']))?['fields']?['status']}",
+                  "priority": "@{first(items(body('Parse_Search_Results')?['objects']))?['fields']?['priority']}",
+                  "callerName": "@{first(items(body('Parse_Search_Results')?['objects']))?['fields']?['caller_id_friendlyname']}",
+                  "agentName": "@{coalesce(first(items(body('Parse_Search_Results')?['objects']))?['fields']?['agent_id_friendlyname'], 'Chưa assign')}",
+                  "teamName": "@{coalesce(first(items(body('Parse_Search_Results')?['objects']))?['fields']?['team_id_friendlyname'], 'Chưa assign')}",
+                  "createdDate": "@{first(items(body('Parse_Search_Results')?['objects']))?['fields']?['start_date']}",
+                  "ttrDeadline": "@{first(items(body('Parse_Search_Results')?['objects']))?['fields']?['ttr_deadline']}",
+                  "lastUpdate": "@{first(items(body('Parse_Search_Results')?['objects']))?['fields']?['last_update']}",
+                  "slaBreached": "@{outputs('Calculate_SLA_Status')?['isBreached']}",
+                  "slaWarning": "@{outputs('Calculate_SLA_Status')?['isWarning']}",
+                  "ticketUrl": "@{parameters('itopBaseUrl')}/pages/UI.php?operation=details&class=UserRequest&id=@{first(items(body('Parse_Search_Results')?['objects']))?['fields']?['id']}"
+                },
+                "allTickets": "@{body('Parse_Search_Results')?['objects']}"
+              },
+              "runAfter": {
+                "Calculate_SLA_Status": ["Succeeded"]
+              }
+            },
+            "Return_Success_Response": {
+              "type": "Response",
+              "kind": "Http",
+              "inputs": {
+                "statusCode": 200,
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": "@outputs('Build_Response_Payload')"
+              },
+              "runAfter": {
+                "Build_Response_Payload": ["Succeeded"]
+              }
+            }
+          },
+          "else": {
+            "actions": {
+              "Return_Not_Found_Response": {
+                "type": "Response",
+                "kind": "Http",
+                "inputs": {
+                  "statusCode": 200,
+                  "headers": {
+                    "Content-Type": "application/json"
+                  },
+                  "body": {
+                    "found": false,
+                    "count": 0,
+                    "message": "Không tìm thấy ticket nào phù hợp với từ khóa '@{body('Parse_Request_Body')?['queryValue']}'"
+                  }
+                },
+                "runAfter": {}
+              }
+            }
+          },
+          "runAfter": {
+            "Parse_Search_Results": ["Succeeded"]
+          }
+        },
+        "Handle_API_Error": {
+          "type": "Response",
+          "kind": "Http",
+          "inputs": {
+            "statusCode": 500,
+            "body": {
+              "found": false,
+              "error": "Lỗi khi gọi iTop API. Vui lòng thử lại sau.",
+              "details": "@{body('Call_iTop_API_Search')}"
+            }
+          },
+          "runAfter": {
+            "Call_iTop_API_Search": ["Failed", "TimedOut"]
+          }
+        }
+      }
+    }
+  },
+  "setup_instructions": {
+    "step1": "Import flow vào Power Automate",
+    "step2": "Cấu hình parameters: itopBaseUrl, itopApiUser, itopApiToken",
+    "step3": "Sau khi lưu, copy HTTP POST URL từ trigger 'When HTTP request is received'",
+    "step4": "Paste URL vào cấu hình Power Automate action trong Copilot Studio",
+    "step5": "Test bằng cách gọi POST với body: {\"queryType\": \"ticket_ref\", \"queryValue\": \"R-001234\"}",
+    "queryTypes": {
+      "ticket_ref": "Tìm theo mã ticket (R-XXXXXX)",
+      "ticket_id": "Tìm theo ID nội bộ iTop",
+      "agent_tickets": "Lấy tất cả ticket của một agent (queryValue = email)",
+      "my_tickets": "Lấy ticket của user đang chat (userEmail = email người dùng)",
+      "keyword_search": "Tìm kiếm theo từ khóa trong tiêu đề/mô tả"
+    }
+  }
+}

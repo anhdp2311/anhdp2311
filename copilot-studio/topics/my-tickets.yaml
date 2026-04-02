@@ -1,0 +1,139 @@
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Danh sách ticket của tôi
+    triggerQueries:
+      - ticket của tôi
+      - ticket của mình
+      - my tickets
+      - xem ticket của tôi
+      - tôi có ticket nào
+      - danh sách ticket
+      - ticket đang xử lý
+      - ticket chưa xong
+      - ticket được giao cho tôi
+      - ticket tôi đang phụ trách
+    description: "Hiển thị danh sách ticket đang được assign cho user hoặc user đã tạo"
+
+  actions:
+    - kind: SendActivity
+      id: sendTypingIndicator
+      activity:
+        type: typing
+
+    - kind: SetVariable
+      id: setUserEmail
+      variable: Topic.UserEmail
+      value: =System.User.Email
+
+    - kind: Question
+      id: askQueryType
+      variable: init:Topic.QueryMode
+      prompt: "📋 Bạn muốn xem loại ticket nào?"
+      entity:
+        kind: ClosedListEntity
+        items:
+          - id: assigned
+            synonyms:
+              - ticket được giao cho tôi
+              - ticket của tôi là agent
+              - đang xử lý
+          - id: created
+            synonyms:
+              - ticket tôi đã tạo
+              - ticket tôi yêu cầu
+              - tôi là caller
+          - id: all
+            synonyms:
+              - tất cả
+              - all
+              - cả hai loại
+
+    - kind: InvokeFlowAction
+      id: callMyTicketsFlow
+      flowId: flow3-ticket-lookup
+      input:
+        binding:
+          queryType: =if(Topic.QueryMode = "assigned", "agent_tickets", if(Topic.QueryMode = "created", "my_tickets", "my_tickets"))
+          queryValue: =Topic.UserEmail
+          userEmail: =Topic.UserEmail
+          statusFilter: '"open"'
+          maxResults: =10
+      output:
+        binding:
+          found: Topic.TicketsFound
+          count: Topic.TicketCount
+          allTickets: Topic.MyTickets
+          message: Topic.NotFoundMessage
+
+    - kind: ConditionGroup
+      id: checkFoundTickets
+      conditions:
+        - id: hasTickets
+          condition: =Topic.TicketsFound = true
+          actions:
+            - kind: SendMessage
+              id: sendSummary
+              message: "📊 Bạn đang có **{Topic.TicketCount}** ticket chưa xử lý:"
+
+            - kind: ForEach
+              id: iterateTickets
+              items: =Topic.MyTickets
+              itemVariable: Topic.CurrentTicket
+              actions:
+                - kind: SendActivity
+                  id: sendTicketItem
+                  activity:
+                    type: message
+                    attachments:
+                      - contentType: application/vnd.microsoft.card.adaptive
+                        content:
+                          $schema: http://adaptivecards.io/schemas/adaptive-card.json
+                          type: AdaptiveCard
+                          version: "1.4"
+                          body:
+                            - type: ColumnSet
+                              columns:
+                                - type: Column
+                                  width: stretch
+                                  items:
+                                    - type: TextBlock
+                                      text: "=Topic.CurrentTicket.fields.ref"
+                                      weight: Bolder
+                                      color: Accent
+                                    - type: TextBlock
+                                      text: "=Topic.CurrentTicket.fields.title"
+                                      wrap: true
+                                      spacing: None
+                                - type: Column
+                                  width: auto
+                                  items:
+                                    - type: TextBlock
+                                      text: "=Topic.CurrentTicket.fields.priority"
+                                    - type: TextBlock
+                                      text: "=Topic.CurrentTicket.fields.status"
+                                      spacing: None
+                                      isSubtle: true
+                            - type: FactSet
+                              facts:
+                                - title: "⏰ Hạn SLA:"
+                                  value: "=Topic.CurrentTicket.fields.ttr_deadline"
+                                - title: "🔄 Cập nhật:"
+                                  value: "=Topic.CurrentTicket.fields.last_update"
+                          actions:
+                            - type: Action.OpenUrl
+                              title: "Xem chi tiết"
+                              url: "=concat(parameters('itopBaseUrl'), '/pages/UI.php?operation=details&class=UserRequest&id=', Topic.CurrentTicket.fields.id)"
+
+        - id: noTickets
+          condition: =Topic.TicketsFound = false
+          actions:
+            - kind: SendMessage
+              id: sendNoTickets
+              message: "✅ Tuyệt vời! Bạn không có ticket nào đang chờ xử lý. Chúc mừng!"
+
+    - kind: SendMessage
+      id: sendHelp
+      message: "💡 Gõ **tra cứu [mã ticket]** để xem chi tiết hoặc **thống kê hôm nay** để xem báo cáo tổng hợp."

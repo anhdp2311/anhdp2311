@@ -1,0 +1,162 @@
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Tạo ticket mới
+    triggerQueries:
+      - tạo ticket
+      - mở ticket mới
+      - tôi cần hỗ trợ
+      - báo lỗi
+      - tạo yêu cầu mới
+      - submit ticket
+      - new ticket
+      - yêu cầu hỗ trợ
+      - tôi muốn tạo ticket
+      - create ticket
+    description: "Hướng dẫn user tạo ticket mới trực tiếp qua chat với agent"
+
+  actions:
+    - kind: SendMessage
+      id: greeting
+      message: "📝 Tôi sẽ giúp bạn tạo ticket hỗ trợ mới. Vui lòng cung cấp thông tin sau:"
+
+    - kind: Question
+      id: getTitle
+      variable: init:Topic.TicketTitle
+      prompt: "**1. Tiêu đề ngắn gọn** mô tả vấn đề của bạn là gì?"
+      entity: StringPrebuiltEntity
+      validation:
+        defaultInvalidPrompt: "⚠️ Tiêu đề quá ngắn. Vui lòng nhập ít nhất 10 ký tự."
+        condition: "=len(Topic.TicketTitle) >= 10"
+
+    - kind: Question
+      id: getDescription
+      variable: init:Topic.TicketDescription
+      prompt: "**2. Mô tả chi tiết** vấn đề bạn gặp phải (bao gồm các bước để tái hiện nếu có):"
+      entity: StringPrebuiltEntity
+
+    - kind: Question
+      id: getPriority
+      variable: init:Topic.TicketPriority
+      prompt: "**3. Mức độ ưu tiên** của vấn đề này là gì?"
+      entity:
+        kind: ClosedListEntity
+        items:
+          - id: "1"
+            synonyms:
+              - rất khẩn
+              - khẩn cấp
+              - critical
+              - p1
+              - ưu tiên 1
+          - id: "2"
+            synonyms:
+              - cao
+              - high
+              - p2
+              - ưu tiên 2
+          - id: "3"
+            synonyms:
+              - trung bình
+              - medium
+              - p3
+              - bình thường
+          - id: "4"
+            synonyms:
+              - thấp
+              - low
+              - p4
+              - không gấp
+
+    - kind: SendActivity
+      id: showConfirmation
+      activity:
+        type: message
+        attachments:
+          - contentType: application/vnd.microsoft.card.adaptive
+            content:
+              $schema: http://adaptivecards.io/schemas/adaptive-card.json
+              type: AdaptiveCard
+              version: "1.4"
+              body:
+                - type: TextBlock
+                  text: "✅ Xác nhận thông tin ticket"
+                  weight: Bolder
+                  size: Large
+                - type: FactSet
+                  facts:
+                    - title: "📝 Tiêu đề:"
+                      value: "=Topic.TicketTitle"
+                    - title: "📋 Mô tả:"
+                      value: "=Topic.TicketDescription"
+                    - title: "⚡ Ưu tiên:"
+                      value: "=Topic.TicketPriority"
+                    - title: "👤 Người yêu cầu:"
+                      value: "=System.User.DisplayName"
+              actions:
+                - type: Action.Submit
+                  title: "✅ Xác nhận tạo ticket"
+                  style: positive
+                  data:
+                    confirm: true
+                - type: Action.Submit
+                  title: "❌ Hủy"
+                  style: destructive
+                  data:
+                    confirm: false
+
+    - kind: Question
+      id: getConfirmation
+      variable: init:Topic.UserConfirmed
+      prompt: "Bạn xác nhận tạo ticket với thông tin trên không?"
+      entity: BooleanPrebuiltEntity
+
+    - kind: ConditionGroup
+      id: checkConfirm
+      conditions:
+        - id: confirmed
+          condition: =Topic.UserConfirmed = true
+          actions:
+            - kind: InvokeFlowAction
+              id: callCreateTicketFlow
+              flowId: flow3-ticket-lookup
+              input:
+                binding:
+                  queryType: ='"create_ticket"'
+                  queryValue: =Topic.TicketTitle
+                  userEmail: =System.User.Email
+                  ticketData:
+                    title: =Topic.TicketTitle
+                    description: =Topic.TicketDescription
+                    priority: =Topic.TicketPriority
+                    callerEmail: =System.User.Email
+              output:
+                binding:
+                  found: Topic.CreateSuccess
+                  ticket: Topic.CreatedTicket
+
+            - kind: ConditionGroup
+              id: checkCreateResult
+              conditions:
+                - id: success
+                  condition: =Topic.CreateSuccess = true
+                  actions:
+                    - kind: SendMessage
+                      id: sendSuccess
+                      message: "✅ Ticket **{Topic.CreatedTicket.ref}** đã được tạo thành công! Đội ngũ hỗ trợ sẽ liên hệ với bạn sớm."
+
+                - id: failure
+                  condition: =Topic.CreateSuccess = false
+                  actions:
+                    - kind: SendMessage
+                      id: sendFailure
+                      message: "❌ Có lỗi khi tạo ticket. Vui lòng thử lại hoặc truy cập trực tiếp iTop portal để tạo ticket."
+
+        - id: cancelled
+          condition: =Topic.UserConfirmed = false
+          actions:
+            - kind: SendMessage
+              id: sendCancelled
+              message: "🚫 Đã hủy tạo ticket. Gõ **tạo ticket** để bắt đầu lại khi bạn cần."

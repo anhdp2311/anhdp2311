@@ -1,0 +1,116 @@
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Thống kê hôm nay
+    triggerQueries:
+      - thống kê hôm nay
+      - báo cáo hôm nay
+      - tổng hợp ticket
+      - bao nhiêu ticket hôm nay
+      - summary
+      - dashboard
+      - overview
+      - ticket đang mở
+      - tình trạng ticket
+      - status hôm nay
+      - report
+    description: "Hiển thị tổng hợp tình trạng ticket trong ngày, phân loại theo agent và cảnh báo SLA"
+
+  actions:
+    - kind: SendActivity
+      id: sendTyping
+      activity:
+        type: typing
+
+    - kind: SendMessage
+      id: sendWaiting
+      message: "⏳ Đang lấy dữ liệu từ iTop, vui lòng chờ..."
+
+    - kind: InvokeFlowAction
+      id: callSummaryFlow
+      flowId: flow3-ticket-lookup
+      input:
+        binding:
+          queryType: ='"keyword_search"'
+          queryValue: ='" "'
+          statusFilter: '"open"'
+          maxResults: =100
+      output:
+        binding:
+          found: Topic.HasData
+          count: Topic.TotalOpen
+          allTickets: Topic.AllOpenTickets
+
+    - kind: ConditionGroup
+      id: checkData
+      conditions:
+        - id: hasData
+          condition: =Topic.HasData = true
+          actions:
+            - kind: SetVariable
+              id: calcBreached
+              variable: Topic.BreachedCount
+              value: =countIf(Topic.AllOpenTickets, item.fields.ttr_deadline < utcNow())
+
+            - kind: SendActivity
+              id: sendDashboard
+              activity:
+                type: message
+                attachments:
+                  - contentType: application/vnd.microsoft.card.adaptive
+                    content:
+                      $schema: http://adaptivecards.io/schemas/adaptive-card.json
+                      type: AdaptiveCard
+                      version: "1.4"
+                      body:
+                        - type: Container
+                          style: emphasis
+                          items:
+                            - type: TextBlock
+                              text: "📊 Báo Cáo Ticket - Hôm Nay"
+                              weight: Bolder
+                              size: Large
+                              color: Accent
+                            - type: TextBlock
+                              text: "=concat('🕐 Cập nhật: ', formatDateTime(utcNow(), 'dd/MM/yyyy HH:mm'))"
+                              size: Small
+                              isSubtle: true
+                        - type: FactSet
+                          facts:
+                            - title: "🔴 Tổng ticket đang mở:"
+                              value: "=string(Topic.TotalOpen)"
+                            - title: "🚨 Vi phạm SLA:"
+                              value: "=string(Topic.BreachedCount)"
+                        - type: TextBlock
+                          text: "Để xem chi tiết từng ticket, gõ **tra cứu [mã ticket]**"
+                          wrap: true
+                          isSubtle: true
+                          size: Small
+                      actions:
+                        - type: Action.Submit
+                          title: "🔄 Làm mới"
+                          data:
+                            action: refresh_summary
+                        - type: Action.Submit
+                          title: "📋 Ticket của tôi"
+                          data:
+                            action: my_tickets
+
+        - id: noData
+          condition: =Topic.HasData = false
+          actions:
+            - kind: SendMessage
+              id: sendNoData
+              message: "✅ Không có ticket nào đang mở. Hệ thống đang hoạt động ổn định!"
+
+    - kind: SendMessage
+      id: sendTips
+      message: |
+        💡 **Các lệnh hữu ích:**
+        - `tra cứu R-001234` - Xem chi tiết ticket
+        - `ticket của tôi` - Xem ticket được assign
+        - `thống kê hôm nay` - Xem báo cáo tổng hợp
+        - `tạo ticket` - Tạo ticket mới
+        - `tìm ticket [từ khóa]` - Tìm kiếm theo từ khóa

@@ -1,0 +1,338 @@
+{
+  "name": "Flow1-DailySummaryTickets",
+  "description": "Scheduled flow - Gửi báo cáo tổng hợp ticket chưa xử lý vào nhóm Teams 3 lần mỗi ngày (8h, 12h, 17h)",
+  "properties": {
+    "connectionReferences": {
+      "shared_teams": {
+        "api": { "name": "shared_teams" },
+        "displayName": "Microsoft Teams",
+        "iconUri": "https://connectoricons-prod.azureedge.net/releases/v1.0.1549/1.0.1549.2680/teams/icon.png"
+      },
+      "shared_http": {
+        "api": { "name": "shared_http" },
+        "displayName": "HTTP",
+        "iconUri": "https://connectoricons-prod.azureedge.net/releases/v1.0.1520/1.0.1520.2513/http/icon.png"
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "itopBaseUrl": {
+          "defaultValue": "https://YOUR_ITOP_URL",
+          "type": "String"
+        },
+        "itopApiUser": {
+          "defaultValue": "api_user",
+          "type": "String"
+        },
+        "itopApiToken": {
+          "defaultValue": "@appsetting('ITOP_API_TOKEN')",
+          "type": "String"
+        },
+        "teamsGroupChatId": {
+          "defaultValue": "YOUR_TEAMS_GROUP_CHAT_ID",
+          "type": "String"
+        },
+        "teamsTeamId": {
+          "defaultValue": "YOUR_TEAMS_TEAM_ID",
+          "type": "String"
+        },
+        "teamsChannelId": {
+          "defaultValue": "YOUR_TEAMS_CHANNEL_ID",
+          "type": "String"
+        }
+      },
+      "triggers": {
+        "Recurrence_Morning_8AM": {
+          "type": "Recurrence",
+          "recurrence": {
+            "frequency": "Day",
+            "interval": 1,
+            "schedule": {
+              "hours": ["8"],
+              "minutes": ["0"],
+              "weekDays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+            },
+            "timeZone": "SE Asia Standard Time"
+          }
+        }
+      },
+      "actions": {
+        "Get_Current_Time": {
+          "type": "Expression",
+          "inputs": {
+            "value": "@{utcNow()}"
+          },
+          "runAfter": {}
+        },
+        "Initialize_Report_Time": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "reportTime",
+                "type": "string",
+                "value": "@{formatDateTime(convertTimeZone(utcNow(), 'UTC', 'SE Asia Standard Time'), 'dd/MM/yyyy HH:mm')}"
+              }
+            ]
+          },
+          "runAfter": {}
+        },
+        "Call_iTop_API_Get_Open_Tickets": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "@{parameters('itopBaseUrl')}/webservices/rest.php",
+            "headers": {
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            "body": "version=1.3&auth_user=@{parameters('itopApiUser')}&auth_token=@{parameters('itopApiToken')}&json_data={\"operation\":\"core/get\",\"class\":\"UserRequest\",\"key\":\"SELECT UserRequest WHERE status NOT IN ('closed', 'resolved')\",\"output_fields\":\"ref,title,caller_id,agent_id,team_id,status,priority,start_date,tto_deadline,ttr_deadline,last_update,escalation_flag\"}"
+          },
+          "runAfter": {
+            "Initialize_Report_Time": ["Succeeded"]
+          }
+        },
+        "Parse_Open_Tickets_Response": {
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@body('Call_iTop_API_Get_Open_Tickets')",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": { "type": "integer" },
+                "message": { "type": "string" },
+                "objects": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "code": { "type": "integer" },
+                      "fields": {
+                        "type": "object",
+                        "properties": {
+                          "ref": { "type": "string" },
+                          "title": { "type": "string" },
+                          "caller_id_friendlyname": { "type": "string" },
+                          "agent_id_friendlyname": { "type": "string" },
+                          "team_id_friendlyname": { "type": "string" },
+                          "status": { "type": "string" },
+                          "priority": { "type": "string" },
+                          "start_date": { "type": "string" },
+                          "tto_deadline": { "type": "string" },
+                          "ttr_deadline": { "type": "string" },
+                          "last_update": { "type": "string" },
+                          "escalation_flag": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Call_iTop_API_Get_Open_Tickets": ["Succeeded"]
+          }
+        },
+        "Initialize_Counters": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "totalOpen",
+                "type": "integer",
+                "value": 0
+              }
+            ]
+          },
+          "runAfter": {
+            "Parse_Open_Tickets_Response": ["Succeeded"]
+          }
+        },
+        "Initialize_SLA_Breach_Count": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "totalSLABreach",
+                "type": "integer",
+                "value": 0
+              }
+            ]
+          },
+          "runAfter": {
+            "Initialize_Counters": ["Succeeded"]
+          }
+        },
+        "Initialize_Agent_Stats": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "agentStats",
+                "type": "object",
+                "value": {}
+              }
+            ]
+          },
+          "runAfter": {
+            "Initialize_SLA_Breach_Count": ["Succeeded"]
+          }
+        },
+        "Initialize_Top5_List": {
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "top5Tickets",
+                "type": "array",
+                "value": []
+              }
+            ]
+          },
+          "runAfter": {
+            "Initialize_Agent_Stats": ["Succeeded"]
+          }
+        },
+        "Process_Each_Ticket": {
+          "type": "Foreach",
+          "foreach": "@items('Process_Each_Ticket')",
+          "actions": {
+            "Increment_Total_Open": {
+              "type": "IncrementVariable",
+              "inputs": {
+                "name": "totalOpen",
+                "value": 1
+              },
+              "runAfter": {}
+            },
+            "Check_SLA_Breach": {
+              "type": "If",
+              "expression": {
+                "and": [
+                  {
+                    "not": {
+                      "equals": [
+                        "@items('Process_Each_Ticket')?['fields']?['ttr_deadline']",
+                        ""
+                      ]
+                    }
+                  },
+                  {
+                    "greater": [
+                      "@utcNow()",
+                      "@items('Process_Each_Ticket')?['fields']?['ttr_deadline']"
+                    ]
+                  }
+                ]
+              },
+              "actions": {
+                "Increment_SLA_Breach": {
+                  "type": "IncrementVariable",
+                  "inputs": {
+                    "name": "totalSLABreach",
+                    "value": 1
+                  },
+                  "runAfter": {}
+                }
+              },
+              "runAfter": {
+                "Increment_Total_Open": ["Succeeded"]
+              }
+            }
+          },
+          "runAfter": {
+            "Initialize_Top5_List": ["Succeeded"]
+          }
+        },
+        "Build_Summary_Card": {
+          "type": "Compose",
+          "inputs": {
+            "type": "AdaptiveCard",
+            "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+            "version": "1.4",
+            "body": [
+              {
+                "type": "Container",
+                "style": "emphasis",
+                "items": [
+                  {
+                    "type": "TextBlock",
+                    "text": "📊 Báo Cáo Ticket Chưa Xử Lý",
+                    "weight": "Bolder",
+                    "size": "Large",
+                    "color": "Accent"
+                  },
+                  {
+                    "type": "TextBlock",
+                    "text": "🕐 Cập nhật lúc: @{variables('reportTime')}",
+                    "size": "Small",
+                    "isSubtle": true
+                  }
+                ]
+              },
+              {
+                "type": "FactSet",
+                "facts": [
+                  {
+                    "title": "🔴 Tổng ticket mở:",
+                    "value": "@{variables('totalOpen')}"
+                  },
+                  {
+                    "title": "🚨 Vi phạm SLA:",
+                    "value": "@{variables('totalSLABreach')}"
+                  }
+                ]
+              }
+            ],
+            "actions": [
+              {
+                "type": "Action.OpenUrl",
+                "title": "🌐 Mở iTop Portal",
+                "url": "@{parameters('itopBaseUrl')}/pages/UI.php"
+              }
+            ]
+          },
+          "runAfter": {
+            "Process_Each_Ticket": ["Succeeded"]
+          }
+        },
+        "Post_To_Teams_Channel": {
+          "type": "ApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_teams",
+              "operationId": "PostAdaptiveCardAndWaitForResponse",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams"
+            },
+            "parameters": {
+              "poster": "Flow bot",
+              "location": "Channel",
+              "body/messageBody": "@{outputs('Build_Summary_Card')}",
+              "body/updateMessage": "✅ Báo cáo đã được xem",
+              "body/recipient/groupId": "@{parameters('teamsTeamId')}",
+              "body/recipient/channelId": "@{parameters('teamsChannelId')}"
+            }
+          },
+          "runAfter": {
+            "Build_Summary_Card": ["Succeeded"]
+          }
+        }
+      }
+    }
+  },
+  "setup_instructions": {
+    "step1": "Import flow vào Power Automate tại make.powerautomate.com",
+    "step2": "Cập nhật các parameter: itopBaseUrl, itopApiUser, itopApiToken",
+    "step3": "Cập nhật teamsTeamId và teamsChannelId từ Teams",
+    "step4": "Kết nối Microsoft Teams connection",
+    "step5": "Tạo thêm 2 trigger giống hệt cho 12h và 17h (hoặc duplicate flow)",
+    "note_recurrence": "Flow hiện tại chạy lúc 8:00 sáng các ngày trong tuần (múi giờ SE Asia/Hà Nội)",
+    "note_itop_api": "Đảm bảo user API trong iTop có quyền đọc UserRequest, Incident"
+  }
+}

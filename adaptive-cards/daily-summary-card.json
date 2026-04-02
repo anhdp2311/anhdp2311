@@ -1,0 +1,181 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.4",
+  "body": [
+    {
+      "type": "Container",
+      "style": "emphasis",
+      "items": [
+        {
+          "type": "ColumnSet",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                {
+                  "type": "Image",
+                  "url": "https://adaptivecards.io/content/notification.png",
+                  "width": "32px",
+                  "height": "32px"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "📊 Báo Cáo Ticket Chưa Xử Lý",
+                  "weight": "Bolder",
+                  "size": "Large",
+                  "color": "Accent"
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "{{reportTime}}",
+                  "size": "Small",
+                  "isSubtle": true,
+                  "spacing": "None"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "📋 Tổng Quan",
+          "weight": "Bolder",
+          "size": "Medium",
+          "spacing": "Medium"
+        },
+        {
+          "type": "FactSet",
+          "facts": [
+            {
+              "title": "🔴 Tổng ticket mở:",
+              "value": "{{totalOpen}}"
+            },
+            {
+              "title": "⚠️ Vi phạm SLA:",
+              "value": "{{totalSLABreach}}"
+            },
+            {
+              "title": "🟡 Sắp hết hạn SLA:",
+              "value": "{{totalSLAWarning}}"
+            },
+            {
+              "title": "🟢 Đã xử lý hôm nay:",
+              "value": "{{totalClosedToday}}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "separator": true,
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "👥 Chi Tiết Theo Agent",
+          "weight": "Bolder",
+          "size": "Medium",
+          "spacing": "Medium"
+        },
+        {
+          "type": "Table",
+          "gridStyle": "accent",
+          "firstRowAsHeader": true,
+          "columns": [
+            { "width": 3 },
+            { "width": 1 },
+            { "width": 1 },
+            { "width": 1 }
+          ],
+          "rows": [
+            {
+              "type": "TableRow",
+              "cells": [
+                {
+                  "type": "TableCell",
+                  "items": [
+                    { "type": "TextBlock", "text": "Agent", "weight": "Bolder" }
+                  ]
+                },
+                {
+                  "type": "TableCell",
+                  "items": [
+                    { "type": "TextBlock", "text": "Mở", "weight": "Bolder" }
+                  ]
+                },
+                {
+                  "type": "TableCell",
+                  "items": [
+                    { "type": "TextBlock", "text": "Vi phạm SLA", "weight": "Bolder" }
+                  ]
+                },
+                {
+                  "type": "TableCell",
+                  "items": [
+                    { "type": "TextBlock", "text": "Ưu tiên cao", "weight": "Bolder" }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "TextBlock",
+          "text": "{{agentTableRows}}",
+          "wrap": true,
+          "isSubtle": true,
+          "size": "Small",
+          "spacing": "None"
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "separator": true,
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "🔥 Top 5 Ticket Cần Chú Ý",
+          "weight": "Bolder",
+          "size": "Medium",
+          "spacing": "Medium"
+        },
+        {
+          "type": "TextBlock",
+          "text": "{{top5Tickets}}",
+          "wrap": true
+        }
+      ]
+    },
+    {
+      "type": "ActionSet",
+      "actions": [
+        {
+          "type": "Action.OpenUrl",
+          "title": "🌐 Mở iTop Portal",
+          "url": "{{itopBaseUrl}}/pages/UI.php"
+        },
+        {
+          "type": "Action.Submit",
+          "title": "🔄 Làm mới",
+          "data": {
+            "action": "refresh_summary"
+          }
+        }
+      ]
+    }
+  ]
+}

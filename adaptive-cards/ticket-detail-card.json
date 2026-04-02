@@ -1,0 +1,267 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.4",
+  "body": [
+    {
+      "type": "Container",
+      "style": "emphasis",
+      "items": [
+        {
+          "type": "ColumnSet",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "🎫",
+                  "size": "ExtraLarge"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "Chi Tiết Ticket",
+                  "weight": "Bolder",
+                  "size": "Large"
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "{{ticketRef}}",
+                  "size": "Medium",
+                  "color": "Accent",
+                  "spacing": "None"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "{{statusBadge}}",
+                  "weight": "Bolder",
+                  "color": "{{statusColor}}"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "{{ticketTitle}}",
+          "wrap": true,
+          "size": "Medium",
+          "weight": "Bolder",
+          "spacing": "Medium"
+        },
+        {
+          "type": "TextBlock",
+          "text": "{{ticketDescription}}",
+          "wrap": true,
+          "isSubtle": true,
+          "maxLines": 3
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "separator": true,
+      "spacing": "Medium",
+      "items": [
+        {
+          "type": "ColumnSet",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "👤 Người yêu cầu",
+                  "size": "Small",
+                  "weight": "Bolder",
+                  "isSubtle": true
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "{{callerName}}",
+                  "spacing": "None"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "🧑‍💼 Agent xử lý",
+                  "size": "Small",
+                  "weight": "Bolder",
+                  "isSubtle": true
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "{{agentName}}",
+                  "spacing": "None"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "ColumnSet",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "⚡ Ưu tiên",
+                  "size": "Small",
+                  "weight": "Bolder",
+                  "isSubtle": true
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "{{priority}}",
+                  "spacing": "None",
+                  "color": "{{priorityColor}}"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "🏢 Team",
+                  "size": "Small",
+                  "weight": "Bolder",
+                  "isSubtle": true
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "{{teamName}}",
+                  "spacing": "None"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "ColumnSet",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "📅 Tạo lúc",
+                  "size": "Small",
+                  "weight": "Bolder",
+                  "isSubtle": true
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "{{createdDate}}",
+                  "spacing": "None"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "⏰ Hạn SLA",
+                  "size": "Small",
+                  "weight": "Bolder",
+                  "isSubtle": true
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "{{slaDeadline}}",
+                  "spacing": "None",
+                  "color": "{{slaColor}}"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "separator": true,
+      "spacing": "Medium",
+      "isVisible": "{{hasSLAWarning}}",
+      "style": "attention",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "⚠️ {{slaWarningText}}",
+          "color": "Attention",
+          "weight": "Bolder",
+          "wrap": true
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "separator": true,
+      "spacing": "Medium",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "📝 Nhật ký gần nhất",
+          "weight": "Bolder",
+          "size": "Small"
+        },
+        {
+          "type": "TextBlock",
+          "text": "{{lastLogEntry}}",
+          "wrap": true,
+          "isSubtle": true,
+          "size": "Small",
+          "maxLines": 4
+        }
+      ]
+    },
+    {
+      "type": "ActionSet",
+      "actions": [
+        {
+          "type": "Action.OpenUrl",
+          "title": "🌐 Mở trong iTop",
+          "url": "{{itopBaseUrl}}/pages/UI.php?operation=details&class=UserRequest&id={{ticketId}}"
+        },
+        {
+          "type": "Action.Submit",
+          "title": "📋 Tickets liên quan",
+          "data": {
+            "action": "get_related_tickets",
+            "callerId": "{{callerId}}"
+          }
+        }
+      ]
+    }
+  ]
+}

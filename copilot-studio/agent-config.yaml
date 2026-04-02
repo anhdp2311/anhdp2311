@@ -1,0 +1,92 @@
+name: eService Support Agent
+description: |
+  AI Agent hỗ trợ quản lý và tra cứu ticket từ hệ thống iTop (eService).
+  Agent được tích hợp vào Microsoft Teams và hỗ trợ tiếng Việt/English.
+
+settings:
+  language: vi-VN
+  fallbackLanguage: en-US
+  enableGenerativeAnswers: true
+  allowInterruptions: true
+  idleTimeoutMinutes: 30
+
+welcomeMessage: |
+  👋 Xin chào! Tôi là **eService Agent** - trợ lý AI hỗ trợ quản lý ticket iTop.
+
+  Tôi có thể giúp bạn:
+  🔍 **Tra cứu ticket** - Gõ `tra cứu R-XXXXXX`
+  📋 **Xem ticket của bạn** - Gõ `ticket của tôi`
+  📊 **Xem thống kê** - Gõ `thống kê hôm nay`
+  📝 **Tạo ticket mới** - Gõ `tạo ticket`
+  🔎 **Tìm theo từ khóa** - Gõ `tìm ticket [từ khóa]`
+
+  Hoặc chỉ cần hỏi tôi bằng ngôn ngữ tự nhiên! 😊
+
+topics:
+  - id: ticket-lookup
+    file: topics/ticket-lookup.yaml
+    enabled: true
+
+  - id: my-tickets
+    file: topics/my-tickets.yaml
+    enabled: true
+
+  - id: today-stats
+    file: topics/today-stats.yaml
+    enabled: true
+
+  - id: create-ticket
+    file: topics/create-ticket.yaml
+    enabled: true
+
+powerAutomateFlows:
+  - id: flow3-ticket-lookup
+    name: Flow3 - Ticket Lookup (HTTP Trigger)
+    description: Flow chính để tra cứu và tương tác với iTop API
+    file: ../power-automate/flow3-ticket-lookup.json
+
+  - id: flow1-daily-summary
+    name: Flow1 - Daily Summary (Scheduled)
+    description: Gửi báo cáo tổng hợp định kỳ vào Teams
+    file: ../power-automate/flow1-daily-summary.json
+
+  - id: flow2-sla-breach
+    name: Flow2 - SLA Breach Check (Scheduled)
+    description: Kiểm tra vi phạm SLA và gửi cảnh báo
+    file: ../power-automate/flow2-sla-breach-check.json
+
+channels:
+  - type: MicrosoftTeams
+    settings:
+      allowInGroupChats: true
+      allowInPersonalChats: true
+      enableMentionTrigger: true
+      mentionTriggerKeyword: "@eService"
+      enableAdaptiveCards: true
+
+variables:
+  global:
+    - name: itopBaseUrl
+      type: string
+      description: URL gốc của iTop portal
+      source: environment
+
+    - name: teamsGroupChatId
+      type: string
+      description: ID của Group Chat Teams
+      source: environment
+
+systemFallback:
+  message: |
+    Xin lỗi, tôi chưa hiểu yêu cầu của bạn. Bạn có thể thử:
+    - `tra cứu [mã ticket]` - Tra cứu thông tin ticket
+    - `ticket của tôi` - Xem danh sách ticket cá nhân
+    - `thống kê hôm nay` - Xem báo cáo tổng hợp
+    - `tạo ticket` - Tạo yêu cầu hỗ trợ mới
+    - `tìm ticket [từ khóa]` - Tìm kiếm ticket theo từ khóa
+    - `giúp đỡ` - Xem hướng dẫn sử dụng đầy đủ
+
+adaptiveCards:
+  dailySummaryCard: ../adaptive-cards/daily-summary-card.json
+  slaBreachAlertCard: ../adaptive-cards/sla-breach-alert-card.json
+  ticketDetailCard: ../adaptive-cards/ticket-detail-card.json

@@ -1,0 +1,154 @@
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Tra cứu ticket
+    triggerQueries:
+      - tra cứu ticket
+      - tìm ticket
+      - ticket số
+      - kiểm tra ticket
+      - xem ticket
+      - thông tin ticket
+      - ticket R-
+      - lookup ticket
+      - search ticket
+      - check ticket
+    description: "Cho phép user tra cứu thông tin chi tiết của một ticket bằng mã số"
+
+  actions:
+    - kind: SendMessage
+      id: askTicketRef
+      message: "🔍 Vui lòng nhập mã ticket bạn muốn tra cứu (ví dụ: **R-001234**)"
+
+    - kind: Question
+      id: getTicketRef
+      variable: init:Topic.TicketRef
+      prompt: "Nhập mã ticket:"
+      entity: StringPrebuiltEntity
+      validation:
+        defaultInvalidPrompt: "⚠️ Mã ticket không hợp lệ. Vui lòng nhập đúng định dạng (ví dụ: R-001234)"
+        condition: "=matches(Topic.TicketRef, \"R-[0-9]{6,}\")"
+
+    - kind: InvokeFlowAction
+      id: callTicketLookupFlow
+      flowId: flow3-ticket-lookup
+      input:
+        binding:
+          queryType: ='"ticket_ref"'
+          queryValue: =Topic.TicketRef
+          userEmail: =System.User.Email
+      output:
+        binding:
+          found: Topic.TicketFound
+          ticket: Topic.TicketData
+          count: Topic.ResultCount
+          message: Topic.NotFoundMessage
+
+    - kind: ConditionGroup
+      id: checkFound
+      conditions:
+        - id: ticketFound
+          condition: =Topic.TicketFound = true
+          actions:
+            - kind: SendActivity
+              id: sendTicketCard
+              activity:
+                type: message
+                attachments:
+                  - contentType: application/vnd.microsoft.card.adaptive
+                    content:
+                      $schema: http://adaptivecards.io/schemas/adaptive-card.json
+                      type: AdaptiveCard
+                      version: "1.4"
+                      body:
+                        - type: Container
+                          style: emphasis
+                          items:
+                            - type: ColumnSet
+                              columns:
+                                - type: Column
+                                  width: stretch
+                                  items:
+                                    - type: TextBlock
+                                      text: "🎫 Chi Tiết Ticket"
+                                      weight: Bolder
+                                      size: Large
+                                    - type: TextBlock
+                                      text: "=Topic.TicketData.ref"
+                                      size: Medium
+                                      color: Accent
+                                      spacing: None
+                                - type: Column
+                                  width: auto
+                                  items:
+                                    - type: TextBlock
+                                      text: "=Topic.TicketData.status"
+                                      weight: Bolder
+                        - type: FactSet
+                          facts:
+                            - title: "📝 Tiêu đề:"
+                              value: "=Topic.TicketData.title"
+                            - title: "👤 Người yêu cầu:"
+                              value: "=Topic.TicketData.callerName"
+                            - title: "🧑‍💼 Agent xử lý:"
+                              value: "=Topic.TicketData.agentName"
+                            - title: "🏢 Team:"
+                              value: "=Topic.TicketData.teamName"
+                            - title: "⚡ Ưu tiên:"
+                              value: "=Topic.TicketData.priority"
+                            - title: "📅 Ngày tạo:"
+                              value: "=Topic.TicketData.createdDate"
+                            - title: "⏰ Hạn SLA:"
+                              value: "=Topic.TicketData.ttrDeadline"
+                            - title: "🔄 Cập nhật cuối:"
+                              value: "=Topic.TicketData.lastUpdate"
+                      actions:
+                        - type: Action.OpenUrl
+                          title: "🌐 Mở trong iTop"
+                          url: "=Topic.TicketData.ticketUrl"
+
+            - kind: ConditionGroup
+              id: checkSLAWarning
+              conditions:
+                - id: slaBreached
+                  condition: =Topic.TicketData.slaBreached = true
+                  actions:
+                    - kind: SendMessage
+                      id: warnSLABreached
+                      message: "🚨 **CẢNH BÁO:** Ticket này đã **VI PHẠM SLA**! Vui lòng xử lý ngay."
+
+                - id: slaWarning
+                  condition: =Topic.TicketData.slaWarning = true
+                  actions:
+                    - kind: SendMessage
+                      id: warnSLASoon
+                      message: "⚠️ **Lưu ý:** Ticket này sắp hết hạn SLA trong vòng 1 giờ tới."
+
+        - id: ticketNotFound
+          condition: =Topic.TicketFound = false
+          actions:
+            - kind: SendMessage
+              id: sendNotFound
+              message: "❌ Không tìm thấy ticket **{Topic.TicketRef}**. Vui lòng kiểm tra lại mã ticket hoặc liên hệ admin."
+
+    - kind: Question
+      id: askContinue
+      variable: init:Topic.ContinueSearch
+      prompt: "Bạn muốn tra cứu thêm ticket khác không?"
+      entity: BooleanPrebuiltEntity
+
+    - kind: ConditionGroup
+      id: checkContinue
+      conditions:
+        - id: continueYes
+          condition: =Topic.ContinueSearch = true
+          actions:
+            - kind: GotoAction
+              id: restart
+              actionId: askTicketRef
+
+    - kind: SendMessage
+      id: farewell
+      message: "✅ Cảm ơn bạn đã sử dụng dịch vụ tra cứu ticket. Nếu cần hỗ trợ thêm, hãy nhắn @eService Agent!"

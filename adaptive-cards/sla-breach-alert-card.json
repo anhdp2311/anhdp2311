@@ -1,0 +1,141 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.4",
+  "body": [
+    {
+      "type": "Container",
+      "style": "attention",
+      "items": [
+        {
+          "type": "ColumnSet",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "🚨",
+                  "size": "ExtraLarge"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "CẢNH BÁO VI PHẠM SLA",
+                  "weight": "Bolder",
+                  "size": "Large",
+                  "color": "Attention"
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "Phát hiện lúc: {{detectedAt}}",
+                  "size": "Small",
+                  "isSubtle": true,
+                  "spacing": "None"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "items": [
+        {
+          "type": "FactSet",
+          "facts": [
+            {
+              "title": "🎫 Ticket ID:",
+              "value": "**{{ticketRef}}**"
+            },
+            {
+              "title": "📝 Tiêu đề:",
+              "value": "{{ticketTitle}}"
+            },
+            {
+              "title": "👤 Người yêu cầu:",
+              "value": "{{callerName}}"
+            },
+            {
+              "title": "🧑‍💼 Agent phụ trách:",
+              "value": "{{agentName}}"
+            },
+            {
+              "title": "🏢 Team:",
+              "value": "{{teamName}}"
+            },
+            {
+              "title": "⚡ Mức ưu tiên:",
+              "value": "{{priority}}"
+            },
+            {
+              "title": "📅 Thời hạn SLA:",
+              "value": "{{slaDeadline}}"
+            },
+            {
+              "title": "⏰ Thời gian quá hạn:",
+              "value": "{{overdueTime}}"
+            },
+            {
+              "title": "🔄 Cập nhật cuối:",
+              "value": "{{lastUpdate}}"
+            },
+            {
+              "title": "📊 Trạng thái:",
+              "value": "{{status}}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "style": "warning",
+      "spacing": "Medium",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "⚠️ {{warningMessage}}",
+          "wrap": true,
+          "weight": "Bolder",
+          "color": "Warning"
+        }
+      ]
+    },
+    {
+      "type": "ActionSet",
+      "actions": [
+        {
+          "type": "Action.OpenUrl",
+          "title": "🔍 Xem Ticket",
+          "url": "{{itopBaseUrl}}/pages/UI.php?operation=details&class=UserRequest&id={{ticketId}}"
+        },
+        {
+          "type": "Action.Submit",
+          "title": "✅ Đã Xác Nhận",
+          "style": "positive",
+          "data": {
+            "action": "acknowledge_sla_breach",
+            "ticketRef": "{{ticketRef}}"
+          }
+        },
+        {
+          "type": "Action.Submit",
+          "title": "📤 Escalate",
+          "style": "destructive",
+          "data": {
+            "action": "escalate_ticket",
+            "ticketRef": "{{ticketRef}}"
+          }
+        }
+      ]
+    }
+  ]
+}
