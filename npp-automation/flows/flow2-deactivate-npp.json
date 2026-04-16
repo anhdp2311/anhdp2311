@@ -1,0 +1,173 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "metadata": {
+    "name": "Flow 2 - Phát hiện yêu cầu ngưng hoạt động NPP",
+    "description": "Tự động quét email có tiêu đề liên quan đến ngưng hoạt động/khóa account NPP và tạo record trong SharePoint List",
+    "version": "1.0.0",
+    "author": "NPP Automation System"
+  },
+  "configuration": {
+    "sharepoint_site_url": "https://YOUR-TENANT.sharepoint.com/sites/YOUR-SITE",
+    "sharepoint_list_name": "NPP Account Tracking",
+    "keywords_subject": [
+      "ngưng hoạt động NPP",
+      "khóa account NPP",
+      "hủy NPP",
+      "ngừng NPP",
+      "tạm ngưng NPP",
+      "vô hiệu hóa NPP",
+      "đóng account NPP"
+    ]
+  },
+  "definition": {
+    "triggers": {
+      "When_a_new_email_arrives_V3": {
+        "type": "ApiConnectionNotification",
+        "inputs": {
+          "host": {
+            "connection": {
+              "name": "@parameters('$connections')['office365']['connectionId']"
+            }
+          },
+          "fetch": {
+            "method": "get",
+            "pathTemplate": {
+              "template": "/v3/Mail/OnNewEmail"
+            },
+            "queries": {
+              "importance": "Any",
+              "fetchOnlyWithAttachment": false,
+              "includeAttachments": false,
+              "folderPath": "Inbox"
+            }
+          },
+          "subscribe": {
+            "method": "post",
+            "pathTemplate": {
+              "template": "/GraphMailSubscriptionPoke/$subscriptions"
+            },
+            "queries": {
+              "importance": "Any",
+              "fetchOnlyWithAttachment": false,
+              "folderPath": "Inbox"
+            }
+          }
+        },
+        "description": "Kích hoạt khi có email mới đến hộp thư"
+      }
+    },
+    "actions": {
+      "Step_1_Check_Subject_Keywords": {
+        "type": "If",
+        "expression": {
+          "or": [
+            { "contains": ["@triggerOutputs()?['body/subject']", "ngưng hoạt động NPP"] },
+            { "contains": ["@triggerOutputs()?['body/subject']", "khóa account NPP"] },
+            { "contains": ["@triggerOutputs()?['body/subject']", "hủy NPP"] },
+            { "contains": ["@triggerOutputs()?['body/subject']", "ngừng NPP"] },
+            { "contains": ["@triggerOutputs()?['body/subject']", "tạm ngưng NPP"] },
+            { "contains": ["@triggerOutputs()?['body/subject']", "vô hiệu hóa NPP"] },
+            { "contains": ["@triggerOutputs()?['body/subject']", "đóng account NPP"] }
+          ]
+        },
+        "actions": {
+          "Step_2_Filter_Out_Replies": {
+            "type": "If",
+            "expression": {
+              "not": {
+                "startsWith": ["@toLower(triggerOutputs()?['body/subject'])", "re:"]
+              }
+            },
+            "actions": {
+              "Step_3_Extract_NPP_Name": {
+                "type": "Compose",
+                "inputs": {
+                  "npp_name": "@if(greater(indexOf(triggerOutputs()?['body/subject'], ' - '), -1), trim(substring(triggerOutputs()?['body/subject'], add(indexOf(triggerOutputs()?['body/subject'], ' - '), 3))), triggerOutputs()?['body/subject'])",
+                  "_comment": "Trích xuất tên NPP từ tiêu đề. Format giả định: 'Ngưng hoạt động NPP - Tên NPP'"
+                },
+                "description": "Trích xuất tên NPP từ tiêu đề email"
+              },
+              "Step_4_Create_SharePoint_Item": {
+                "type": "ApiConnection",
+                "inputs": {
+                  "host": {
+                    "connection": {
+                      "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+                    }
+                  },
+                  "method": "post",
+                  "path": "/datasets/@{encodeURIComponent(encodeURIComponent('YOUR-SHAREPOINT-SITE-URL'))}/tables/@{encodeURIComponent(encodeURIComponent('YOUR-LIST-GUID'))}/items",
+                  "body": {
+                    "LoaiYeuCau": "Ngưng hoạt động",
+                    "TenNPP": "@outputs('Step_3_Extract_NPP_Name')?['npp_name']",
+                    "NgayYeuCau": "@triggerOutputs()?['body/receivedDateTime']",
+                    "TrangThai": "Đang chờ xử lý",
+                    "EmailNguoiYeuCau": "@triggerOutputs()?['body/from']",
+                    "ConversationId": "@triggerOutputs()?['body/conversationId']",
+                    "MessageId": "@triggerOutputs()?['body/id']",
+                    "LinkEmailGoc": {
+                      "Description": "Email gốc",
+                      "Url": "@concat('https://outlook.office365.com/mail/inbox/id/', triggerOutputs()?['body/id'])"
+                    },
+                    "ThangBaoCao": "@formatDateTime(triggerOutputs()?['body/receivedDateTime'], 'yyyy-MM')",
+                    "GhiChu": "@concat('Tự động tạo từ email: ', triggerOutputs()?['body/subject'])"
+                  }
+                },
+                "description": "Tạo record ngưng hoạt động trong SharePoint List"
+              },
+              "Step_5_Send_Notification": {
+                "type": "ApiConnection",
+                "inputs": {
+                  "host": {
+                    "connection": {
+                      "name": "@parameters('$connections')['teams']['connectionId']"
+                    }
+                  },
+                  "method": "post",
+                  "path": "/v3/beta/teams/YOUR-TEAM-ID/channels/YOUR-CHANNEL-ID/messages",
+                  "body": {
+                    "messageBody": "<p>🔴 <b>Yêu cầu ngưng hoạt động NPP đã được ghi nhận</b></p><p>Tiêu đề: @{triggerOutputs()?['body/subject']}</p><p>Từ: @{triggerOutputs()?['body/from']}</p><p>Ngày: @{triggerOutputs()?['body/receivedDateTime']}</p>"
+                  }
+                },
+                "description": "[Tùy chọn] Gửi notification qua Teams khi phát hiện yêu cầu ngưng hoạt động"
+              }
+            },
+            "else": {
+              "_comment": "Email là reply - bỏ qua, sẽ xử lý bởi Flow 3"
+            }
+          }
+        },
+        "else": {
+          "_comment": "Email không chứa từ khóa ngưng hoạt động NPP - bỏ qua"
+        },
+        "description": "Kiểm tra tiêu đề email có chứa từ khóa ngưng hoạt động NPP không"
+      }
+    },
+    "parameters": {
+      "$connections": {
+        "defaultValue": {},
+        "type": "Object"
+      }
+    }
+  },
+  "connectionReferences": {
+    "office365": {
+      "connectionName": "shared_office365",
+      "source": "Embedded",
+      "id": "/providers/Microsoft.PowerApps/apis/shared_office365",
+      "displayName": "Office 365 Outlook"
+    },
+    "sharepointonline": {
+      "connectionName": "shared_sharepointonline",
+      "source": "Embedded",
+      "id": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "displayName": "SharePoint"
+    },
+    "teams": {
+      "connectionName": "shared_teams",
+      "source": "Embedded",
+      "id": "/providers/Microsoft.PowerApps/apis/shared_teams",
+      "displayName": "Microsoft Teams"
+    }
+  }
+}

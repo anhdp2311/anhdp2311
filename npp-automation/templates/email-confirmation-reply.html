@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Xác nhận hoàn tất xử lý account NPP</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; color: #333; }
+        .header { background-color: #107C10; color: white; padding: 15px 20px; border-radius: 4px 4px 0 0; }
+        .content { border: 1px solid #ddd; padding: 20px; border-radius: 0 0 4px 4px; }
+        table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+        th { background-color: #f0f0f0; text-align: left; padding: 8px 12px; border: 1px solid #ddd; width: 200px; }
+        td { padding: 8px 12px; border: 1px solid #ddd; }
+        .required { color: red; }
+        .note { background-color: #D4EDDA; padding: 10px; border-left: 4px solid #28A745; margin: 15px 0; }
+        .field-input { color: #107C10; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>✅ XÁC NHẬN HOÀN TẤT XỬ LÝ ACCOUNT NPP</h2>
+    </div>
+    <div class="content">
+        <p>Xin thông báo đã hoàn tất xử lý yêu cầu account NPP:</p>
+
+        <table>
+            <tr>
+                <th>Loại xử lý <span class="required">*</span></th>
+                <td class="field-input">[Mở mới / Ngưng hoạt động]</td>
+            </tr>
+            <tr>
+                <th>Tên NPP <span class="required">*</span></th>
+                <td class="field-input">[Tên Nhà Phân Phối]</td>
+            </tr>
+            <tr>
+                <th>Mã NPP <span class="required">*</span></th>
+                <td class="field-input">[Mã NPP đã tạo/ngưng]</td>
+            </tr>
+            <tr>
+                <th>Loại Account <span class="required">*</span></th>
+                <td class="field-input">[Dùng chung / Dùng riêng]</td>
+            </tr>
+            <tr>
+                <th>Ngày hoàn tất <span class="required">*</span></th>
+                <td class="field-input">[DD/MM/YYYY]</td>
+            </tr>
+            <tr>
+                <th>Người thực hiện</th>
+                <td class="field-input">[Họ tên người xử lý]</td>
+            </tr>
+            <tr>
+                <th>Ghi chú</th>
+                <td class="field-input">[Thông tin bổ sung]</td>
+            </tr>
+        </table>
+
+        <div class="note">
+            <strong>📌 Lưu ý cho IT/Admin khi reply:</strong>
+            <ul>
+                <li>Phải <strong>Reply</strong> email gốc (không tạo email mới) để hệ thống tracking tự động</li>
+                <li>Điền đầy đủ: <strong>Mã NPP</strong>, <strong>Loại Account</strong> (dùng chung/dùng riêng), <strong>Ngày hoàn tất</strong></li>
+                <li>Giữ nguyên tiêu đề email (Re: ...)</li>
+                <li>Hệ thống sẽ tự động cập nhật trạng thái dựa trên nội dung reply</li>
+            </ul>
+        </div>
+
+        <p>Trân trọng,<br/><strong>[Họ tên]</strong><br/>Phòng IT</p>
+    </div>
+</body>
+</html>

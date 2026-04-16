@@ -1,0 +1,228 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "metadata": {
+    "name": "Flow 3 - Phát hiện email trả lời xác nhận hoàn tất",
+    "description": "Tự động quét email reply xác nhận đã tạo/ngưng account NPP, trích xuất thông tin (mã NPP, ngày hoàn tất, loại account) và cập nhật SharePoint List",
+    "version": "1.0.0",
+    "author": "NPP Automation System"
+  },
+  "configuration": {
+    "sharepoint_site_url": "https://YOUR-TENANT.sharepoint.com/sites/YOUR-SITE",
+    "sharepoint_list_name": "NPP Account Tracking",
+    "keywords_confirmation": [
+      "đã tạo xong",
+      "đã mở xong",
+      "đã tạo account",
+      "đã hoàn tất",
+      "đã ngưng",
+      "đã khóa",
+      "đã hủy",
+      "account đã sẵn sàng",
+      "mã NPP"
+    ],
+    "keywords_account_type": {
+      "shared": ["dùng chung", "chung", "shared", "share"],
+      "dedicated": ["dùng riêng", "riêng", "dedicated", "private"]
+    }
+  },
+  "definition": {
+    "triggers": {
+      "When_a_new_email_arrives_V3": {
+        "type": "ApiConnectionNotification",
+        "inputs": {
+          "host": {
+            "connection": {
+              "name": "@parameters('$connections')['office365']['connectionId']"
+            }
+          },
+          "fetch": {
+            "method": "get",
+            "pathTemplate": {
+              "template": "/v3/Mail/OnNewEmail"
+            },
+            "queries": {
+              "importance": "Any",
+              "fetchOnlyWithAttachment": false,
+              "includeAttachments": false,
+              "folderPath": "Inbox"
+            }
+          },
+          "subscribe": {
+            "method": "post",
+            "pathTemplate": {
+              "template": "/GraphMailSubscriptionPoke/$subscriptions"
+            },
+            "queries": {
+              "importance": "Any",
+              "fetchOnlyWithAttachment": false,
+              "folderPath": "Inbox"
+            }
+          }
+        },
+        "description": "Kích hoạt khi có email mới đến hộp thư"
+      }
+    },
+    "actions": {
+      "Step_1_Check_If_Reply_About_NPP": {
+        "type": "If",
+        "expression": {
+          "and": [
+            {
+              "startsWith": ["@toLower(triggerOutputs()?['body/subject'])", "re:"]
+            },
+            {
+              "or": [
+                { "contains": ["@toLower(triggerOutputs()?['body/subject'])", "npp"] },
+                { "contains": ["@toLower(triggerOutputs()?['body/subject'])", "account"] },
+                { "contains": ["@toLower(triggerOutputs()?['body/subject'])", "nhà phân phối"] }
+              ]
+            }
+          ]
+        },
+        "actions": {
+          "Step_2_Get_Conversation_ID": {
+            "type": "Compose",
+            "inputs": {
+              "conversationId": "@triggerOutputs()?['body/conversationId']"
+            },
+            "description": "Lấy Conversation ID để tìm record tương ứng trong SharePoint"
+          },
+          "Step_3_Find_Matching_Record": {
+            "type": "ApiConnection",
+            "inputs": {
+              "host": {
+                "connection": {
+                  "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+                }
+              },
+              "method": "get",
+              "path": "/datasets/@{encodeURIComponent(encodeURIComponent('YOUR-SHAREPOINT-SITE-URL'))}/tables/@{encodeURIComponent(encodeURIComponent('YOUR-LIST-GUID'))}/items",
+              "queries": {
+                "$filter": "ConversationId eq '@{triggerOutputs()?['body/conversationId']}'"
+              }
+            },
+            "description": "Tìm record trong SharePoint List dựa trên Conversation ID"
+          },
+          "Step_4_Check_Record_Found": {
+            "type": "If",
+            "expression": {
+              "greater": ["@length(outputs('Step_3_Find_Matching_Record')?['body/value'])", 0]
+            },
+            "actions": {
+              "Step_5_Extract_NPP_Code": {
+                "type": "Compose",
+                "inputs": {
+                  "_comment": "Trích xuất mã NPP từ nội dung email. Customize regex pattern dựa trên format thực tế.",
+                  "extraction_logic": {
+                    "method_1_pattern_match": "Tìm pattern 'Mã NPP: XXXXX' hoặc 'NPP code: XXXXX' trong email body",
+                    "method_2_keyword_search": "Tìm chuỗi số/chữ sau từ khóa 'mã NPP', 'mã số', 'code'",
+                    "method_3_ai_builder": "Dùng AI Builder model để extract entity 'NPP Code' từ email text"
+                  },
+                  "npp_code_expression": "@if(greater(indexOf(toLower(triggerOutputs()?['body/bodyPreview']), 'mã npp'), -1), trim(substring(triggerOutputs()?['body/bodyPreview'], add(indexOf(toLower(triggerOutputs()?['body/bodyPreview']), 'mã npp'), 8), 20)), '')",
+                  "_note": "Expression trên tìm text sau 'mã npp' và lấy 20 ký tự tiếp theo. Cần tinh chỉnh theo format thực tế."
+                },
+                "description": "Trích xuất mã NPP từ nội dung email reply"
+              },
+              "Step_6_Detect_Account_Type": {
+                "type": "Compose",
+                "inputs": {
+                  "_comment": "Phát hiện loại account (dùng chung / dùng riêng) từ nội dung email",
+                  "account_type": "@if(or(contains(toLower(triggerOutputs()?['body/bodyPreview']), 'dùng chung'), contains(toLower(triggerOutputs()?['body/bodyPreview']), 'shared'), contains(toLower(triggerOutputs()?['body/bodyPreview']), 'chung')), 'Dùng chung', if(or(contains(toLower(triggerOutputs()?['body/bodyPreview']), 'dùng riêng'), contains(toLower(triggerOutputs()?['body/bodyPreview']), 'dedicated'), contains(toLower(triggerOutputs()?['body/bodyPreview']), 'riêng')), 'Dùng riêng', ''))"
+                },
+                "description": "Phát hiện loại account NPP từ từ khóa trong email"
+              },
+              "Step_7_Extract_Completion_Date": {
+                "type": "Compose",
+                "inputs": {
+                  "_comment": "Trích xuất ngày hoàn tất từ email. Mặc định dùng ngày nhận email reply nếu không tìm thấy ngày cụ thể.",
+                  "completion_date": "@triggerOutputs()?['body/receivedDateTime']",
+                  "_note": "Nếu email có ghi ngày cụ thể (VD: 'đã tạo ngày 15/03/2026'), cần thêm logic parse ngày. Hiện tại dùng ngày nhận email reply."
+                },
+                "description": "Trích xuất ngày hoàn tất xử lý"
+              },
+              "Step_8_Update_SharePoint_Record": {
+                "type": "ApiConnection",
+                "inputs": {
+                  "host": {
+                    "connection": {
+                      "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+                    }
+                  },
+                  "method": "patch",
+                  "path": "/datasets/@{encodeURIComponent(encodeURIComponent('YOUR-SHAREPOINT-SITE-URL'))}/tables/@{encodeURIComponent(encodeURIComponent('YOUR-LIST-GUID'))}/items/@{first(outputs('Step_3_Find_Matching_Record')?['body/value'])?['ID']}",
+                  "body": {
+                    "MaNPP": "@outputs('Step_5_Extract_NPP_Code')?['npp_code_expression']",
+                    "LoaiAccount": "@outputs('Step_6_Detect_Account_Type')?['account_type']",
+                    "NgayHoanTat": "@outputs('Step_7_Extract_Completion_Date')?['completion_date']",
+                    "TrangThai": "@if(and(not(empty(outputs('Step_5_Extract_NPP_Code')?['npp_code_expression'])), not(empty(outputs('Step_6_Detect_Account_Type')?['account_type']))), 'Hoàn tất', 'Thiếu thông tin')",
+                    "GhiChu": "@concat(first(outputs('Step_3_Find_Matching_Record')?['body/value'])?['GhiChu'], ' | Reply từ: ', triggerOutputs()?['body/from'], ' lúc ', triggerOutputs()?['body/receivedDateTime'])"
+                  }
+                },
+                "description": "Cập nhật record trong SharePoint với thông tin từ email xác nhận"
+              },
+              "Step_9_Notify_If_Missing_Info": {
+                "type": "If",
+                "expression": {
+                  "or": [
+                    { "equals": ["@outputs('Step_5_Extract_NPP_Code')?['npp_code_expression']", ""] },
+                    { "equals": ["@outputs('Step_6_Detect_Account_Type')?['account_type']", ""] }
+                  ]
+                },
+                "actions": {
+                  "Send_Missing_Info_Alert": {
+                    "type": "ApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connection": {
+                          "name": "@parameters('$connections')['office365']['connectionId']"
+                        }
+                      },
+                      "method": "post",
+                      "path": "/v2/Mail",
+                      "body": {
+                        "To": "YOUR-EMAIL@company.com",
+                        "Subject": "⚠️ NPP Automation - Thiếu thông tin từ email xác nhận",
+                        "Body": "<h3>Cảnh báo: Không thể trích xuất đầy đủ thông tin</h3><p><b>Email gốc:</b> @{triggerOutputs()?['body/subject']}</p><p><b>Mã NPP trích xuất:</b> @{outputs('Step_5_Extract_NPP_Code')?['npp_code_expression']}</p><p><b>Loại account:</b> @{outputs('Step_6_Detect_Account_Type')?['account_type']}</p><p>Vui lòng kiểm tra và cập nhật thủ công trong SharePoint List.</p>",
+                        "Importance": "High"
+                      }
+                    },
+                    "description": "Gửi email cảnh báo nếu không trích xuất đủ thông tin"
+                  }
+                },
+                "description": "Kiểm tra xem có thiếu thông tin không và gửi cảnh báo"
+              }
+            },
+            "else": {
+              "_comment": "Không tìm thấy record matching trong SharePoint - có thể email reply không liên quan đến NPP tracking"
+            },
+            "description": "Kiểm tra xem có tìm được record tương ứng trong SharePoint không"
+          }
+        },
+        "else": {
+          "_comment": "Email không phải reply về NPP - bỏ qua"
+        },
+        "description": "Kiểm tra email có phải reply về NPP không (bắt đầu bằng Re: và chứa từ khóa NPP)"
+      }
+    },
+    "parameters": {
+      "$connections": {
+        "defaultValue": {},
+        "type": "Object"
+      }
+    }
+  },
+  "connectionReferences": {
+    "office365": {
+      "connectionName": "shared_office365",
+      "source": "Embedded",
+      "id": "/providers/Microsoft.PowerApps/apis/shared_office365",
+      "displayName": "Office 365 Outlook"
+    },
+    "sharepointonline": {
+      "connectionName": "shared_sharepointonline",
+      "source": "Embedded",
+      "id": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "displayName": "SharePoint"
+    }
+  }
+}

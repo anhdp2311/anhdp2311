@@ -1,0 +1,258 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "metadata": {
+    "name": "Flow 5 - Báo cáo nghiệm thu hàng tháng",
+    "description": "Chạy vào ngày 1 mỗi tháng, tổng hợp dữ liệu NPP từ SharePoint List, tạo báo cáo Excel và gửi email cho các bên liên quan",
+    "version": "1.0.0",
+    "author": "NPP Automation System"
+  },
+  "configuration": {
+    "sharepoint_site_url": "https://YOUR-TENANT.sharepoint.com/sites/YOUR-SITE",
+    "sharepoint_list_name": "NPP Account Tracking",
+    "report_recipients": "YOUR-EMAIL@company.com; manager@company.com",
+    "report_folder": "/Shared Documents/NPP Reports",
+    "excel_template_path": "/Shared Documents/NPP Reports/Template_BaoCao_NPP.xlsx"
+  },
+  "definition": {
+    "triggers": {
+      "Recurrence_Monthly": {
+        "type": "Recurrence",
+        "recurrence": {
+          "frequency": "Month",
+          "interval": 1,
+          "schedule": {
+            "monthDays": ["2"],
+            "hours": ["8"],
+            "minutes": ["0"]
+          },
+          "timeZone": "SE Asia Standard Time"
+        },
+        "description": "Chạy ngày 2 mỗi tháng lúc 8:00 sáng (giờ Việt Nam). Chọn ngày 2 thay vì ngày 1 để đảm bảo dữ liệu tháng trước đã đầy đủ."
+      }
+    },
+    "actions": {
+      "Step_1_Calculate_Report_Period": {
+        "type": "Compose",
+        "inputs": {
+          "report_month": "@formatDateTime(addDays(utcNow(), -2), 'yyyy-MM')",
+          "report_month_display": "@formatDateTime(addDays(utcNow(), -2), 'MM/yyyy')",
+          "period_start": "@startOfMonth(addDays(utcNow(), -2), 'yyyy-MM-ddTHH:mm:ssZ')",
+          "period_end": "@formatDateTime(utcNow(), 'yyyy-MM-ddTHH:mm:ssZ')",
+          "_comment": "Tính khoảng thời gian báo cáo = tháng trước"
+        },
+        "description": "Xác định khoảng thời gian báo cáo (tháng trước)"
+      },
+      "Step_2_Get_New_NPP_Records": {
+        "type": "ApiConnection",
+        "inputs": {
+          "host": {
+            "connection": {
+              "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+            }
+          },
+          "method": "get",
+          "path": "/datasets/@{encodeURIComponent(encodeURIComponent('YOUR-SHAREPOINT-SITE-URL'))}/tables/@{encodeURIComponent(encodeURIComponent('YOUR-LIST-GUID'))}/items",
+          "queries": {
+            "$filter": "LoaiYeuCau eq 'Mở mới' and ThangBaoCao eq '@{outputs('Step_1_Calculate_Report_Period')?['report_month']}'"
+          }
+        },
+        "description": "Lấy tất cả yêu cầu mở mới NPP trong tháng báo cáo"
+      },
+      "Step_3_Get_Deactivated_NPP_Records": {
+        "type": "ApiConnection",
+        "inputs": {
+          "host": {
+            "connection": {
+              "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+            }
+          },
+          "method": "get",
+          "path": "/datasets/@{encodeURIComponent(encodeURIComponent('YOUR-SHAREPOINT-SITE-URL'))}/tables/@{encodeURIComponent(encodeURIComponent('YOUR-LIST-GUID'))}/items",
+          "queries": {
+            "$filter": "LoaiYeuCau eq 'Ngưng hoạt động' and ThangBaoCao eq '@{outputs('Step_1_Calculate_Report_Period')?['report_month']}'"
+          }
+        },
+        "description": "Lấy tất cả yêu cầu ngưng hoạt động NPP trong tháng báo cáo"
+      },
+      "Step_4_Calculate_Summary_Stats": {
+        "type": "Compose",
+        "inputs": {
+          "total_new": "@length(outputs('Step_2_Get_New_NPP_Records')?['body/value'])",
+          "total_deactivated": "@length(outputs('Step_3_Get_Deactivated_NPP_Records')?['body/value'])",
+          "total_all": "@add(length(outputs('Step_2_Get_New_NPP_Records')?['body/value']), length(outputs('Step_3_Get_Deactivated_NPP_Records')?['body/value']))",
+          "_comment": "Thống kê tổng hợp"
+        },
+        "description": "Tính toán các chỉ số thống kê"
+      },
+      "Step_5_Build_New_NPP_Table": {
+        "type": "Table",
+        "inputs": {
+          "from": "@outputs('Step_2_Get_New_NPP_Records')?['body/value']",
+          "format": "HTML",
+          "columns": [
+            { "header": "STT", "value": "@addProperty(item(), 'index', '')" },
+            { "header": "Tên NPP", "value": "@item()?['TenNPP']" },
+            { "header": "Mã NPP", "value": "@coalesce(item()?['MaNPP'], 'Chưa có')" },
+            { "header": "Loại Account", "value": "@coalesce(item()?['LoaiAccount'], 'Chưa xác định')" },
+            { "header": "Ngày Yêu Cầu", "value": "@formatDateTime(item()?['NgayYeuCau'], 'dd/MM/yyyy')" },
+            { "header": "Ngày Hoàn Tất", "value": "@if(empty(item()?['NgayHoanTat']), 'Chưa hoàn tất', formatDateTime(item()?['NgayHoanTat'], 'dd/MM/yyyy'))" },
+            { "header": "Trạng Thái", "value": "@item()?['TrangThai']" },
+            { "header": "Người Yêu Cầu", "value": "@item()?['EmailNguoiYeuCau']" }
+          ]
+        },
+        "description": "Tạo bảng HTML danh sách NPP mở mới"
+      },
+      "Step_6_Build_Deactivated_NPP_Table": {
+        "type": "Table",
+        "inputs": {
+          "from": "@outputs('Step_3_Get_Deactivated_NPP_Records')?['body/value']",
+          "format": "HTML",
+          "columns": [
+            { "header": "STT", "value": "@addProperty(item(), 'index', '')" },
+            { "header": "Tên NPP", "value": "@item()?['TenNPP']" },
+            { "header": "Mã NPP", "value": "@coalesce(item()?['MaNPP'], 'Chưa có')" },
+            { "header": "Ngày Yêu Cầu", "value": "@formatDateTime(item()?['NgayYeuCau'], 'dd/MM/yyyy')" },
+            { "header": "Ngày Hoàn Tất", "value": "@if(empty(item()?['NgayHoanTat']), 'Chưa hoàn tất', formatDateTime(item()?['NgayHoanTat'], 'dd/MM/yyyy'))" },
+            { "header": "Trạng Thái", "value": "@item()?['TrangThai']" },
+            { "header": "Người Yêu Cầu", "value": "@item()?['EmailNguoiYeuCau']" }
+          ]
+        },
+        "description": "Tạo bảng HTML danh sách NPP ngưng hoạt động"
+      },
+      "Step_7_Create_Excel_Report": {
+        "type": "Scope",
+        "actions": {
+          "Create_Excel_File": {
+            "type": "ApiConnection",
+            "inputs": {
+              "host": {
+                "connection": {
+                  "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+                }
+              },
+              "method": "post",
+              "path": "/datasets/@{encodeURIComponent(encodeURIComponent('YOUR-SHAREPOINT-SITE-URL'))}/files",
+              "body": {
+                "name": "BaoCao_NPP_@{outputs('Step_1_Calculate_Report_Period')?['report_month']}.xlsx",
+                "path": "/Shared Documents/NPP Reports/"
+              }
+            },
+            "description": "Tạo file Excel báo cáo trên SharePoint"
+          },
+          "Add_New_NPP_To_Excel": {
+            "type": "Foreach",
+            "foreach": "@outputs('Step_2_Get_New_NPP_Records')?['body/value']",
+            "actions": {
+              "Add_Row_New_NPP": {
+                "type": "ApiConnection",
+                "inputs": {
+                  "host": {
+                    "connection": {
+                      "name": "@parameters('$connections')['excelonlinebusiness']['connectionId']"
+                    }
+                  },
+                  "method": "post",
+                  "path": "/drives/{drive-id}/files/{file-id}/tables/{table-name}/rows",
+                  "body": {
+                    "values": [
+                      [
+                        "Mở mới",
+                        "@items('Add_New_NPP_To_Excel')?['TenNPP']",
+                        "@coalesce(items('Add_New_NPP_To_Excel')?['MaNPP'], '')",
+                        "@coalesce(items('Add_New_NPP_To_Excel')?['LoaiAccount'], '')",
+                        "@formatDateTime(items('Add_New_NPP_To_Excel')?['NgayYeuCau'], 'dd/MM/yyyy')",
+                        "@if(empty(items('Add_New_NPP_To_Excel')?['NgayHoanTat']), '', formatDateTime(items('Add_New_NPP_To_Excel')?['NgayHoanTat'], 'dd/MM/yyyy'))",
+                        "@items('Add_New_NPP_To_Excel')?['TrangThai']",
+                        "@items('Add_New_NPP_To_Excel')?['EmailNguoiYeuCau']"
+                      ]
+                    ]
+                  }
+                }
+              }
+            },
+            "description": "Thêm dữ liệu mở mới NPP vào Excel"
+          },
+          "Add_Deactivated_NPP_To_Excel": {
+            "type": "Foreach",
+            "foreach": "@outputs('Step_3_Get_Deactivated_NPP_Records')?['body/value']",
+            "actions": {
+              "Add_Row_Deactivated": {
+                "type": "ApiConnection",
+                "inputs": {
+                  "host": {
+                    "connection": {
+                      "name": "@parameters('$connections')['excelonlinebusiness']['connectionId']"
+                    }
+                  },
+                  "method": "post",
+                  "path": "/drives/{drive-id}/files/{file-id}/tables/{table-name}/rows",
+                  "body": {
+                    "values": [
+                      [
+                        "Ngưng hoạt động",
+                        "@items('Add_Deactivated_NPP_To_Excel')?['TenNPP']",
+                        "@coalesce(items('Add_Deactivated_NPP_To_Excel')?['MaNPP'], '')",
+                        "",
+                        "@formatDateTime(items('Add_Deactivated_NPP_To_Excel')?['NgayYeuCau'], 'dd/MM/yyyy')",
+                        "@if(empty(items('Add_Deactivated_NPP_To_Excel')?['NgayHoanTat']), '', formatDateTime(items('Add_Deactivated_NPP_To_Excel')?['NgayHoanTat'], 'dd/MM/yyyy'))",
+                        "@items('Add_Deactivated_NPP_To_Excel')?['TrangThai']",
+                        "@items('Add_Deactivated_NPP_To_Excel')?['EmailNguoiYeuCau']"
+                      ]
+                    ]
+                  }
+                }
+              }
+            },
+            "description": "Thêm dữ liệu ngưng hoạt động NPP vào Excel"
+          }
+        },
+        "description": "Tạo file Excel báo cáo trên SharePoint (tùy chọn - có thể dùng Excel Online connector)"
+      },
+      "Step_8_Send_Monthly_Report_Email": {
+        "type": "ApiConnection",
+        "inputs": {
+          "host": {
+            "connection": {
+              "name": "@parameters('$connections')['office365']['connectionId']"
+            }
+          },
+          "method": "post",
+          "path": "/v2/Mail",
+          "body": {
+            "To": "YOUR-EMAIL@company.com; manager@company.com",
+            "Subject": "📋 Báo cáo nghiệm thu NPP tháng @{outputs('Step_1_Calculate_Report_Period')?['report_month_display']}",
+            "Body": "<html><body><h1>📋 BÁO CÁO NGHIỆM THU ACCOUNT NPP</h1><h2>Tháng @{outputs('Step_1_Calculate_Report_Period')?['report_month_display']}</h2><hr/><h3>📊 Tổng Quan</h3><table border='1' cellpadding='8' cellspacing='0' style='border-collapse: collapse;'><tr style='background-color: #4472C4; color: white;'><th>Chỉ số</th><th>Số lượng</th></tr><tr><td>Tổng yêu cầu trong tháng</td><td><b>@{outputs('Step_4_Calculate_Summary_Stats')?['total_all']}</b></td></tr><tr><td>🟢 NPP mở mới</td><td><b>@{outputs('Step_4_Calculate_Summary_Stats')?['total_new']}</b></td></tr><tr><td>🔴 NPP ngưng hoạt động</td><td><b>@{outputs('Step_4_Calculate_Summary_Stats')?['total_deactivated']}</b></td></tr></table><br/><h3>🟢 I. DANH SÁCH NPP MỞ MỚI</h3>@{outputs('Step_5_Build_New_NPP_Table')}<br/><h3>🔴 II. DANH SÁCH NPP NGƯNG HOẠT ĐỘNG</h3>@{outputs('Step_6_Build_Deactivated_NPP_Table')}<br/><hr/><p><i>Báo cáo được tạo tự động bởi NPP Automation System</i></p><p><a href='YOUR-SHAREPOINT-SITE-URL/Lists/NPP%20Account%20Tracking'>📋 Xem chi tiết trên SharePoint</a></p></body></html>",
+            "Importance": "Normal"
+          }
+        },
+        "description": "Gửi email báo cáo nghiệm thu hàng tháng"
+      }
+    },
+    "parameters": {
+      "$connections": {
+        "defaultValue": {},
+        "type": "Object"
+      }
+    }
+  },
+  "connectionReferences": {
+    "office365": {
+      "connectionName": "shared_office365",
+      "source": "Embedded",
+      "id": "/providers/Microsoft.PowerApps/apis/shared_office365",
+      "displayName": "Office 365 Outlook"
+    },
+    "sharepointonline": {
+      "connectionName": "shared_sharepointonline",
+      "source": "Embedded",
+      "id": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "displayName": "SharePoint"
+    },
+    "excelonlinebusiness": {
+      "connectionName": "shared_excelonlinebusiness",
+      "source": "Embedded",
+      "id": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+      "displayName": "Excel Online (Business)"
+    }
+  }
+}

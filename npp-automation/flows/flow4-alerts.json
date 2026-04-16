@@ -1,0 +1,225 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "metadata": {
+    "name": "Flow 4 - Cảnh báo & Nhắc nhở",
+    "description": "Chạy theo lịch để kiểm tra các yêu cầu NPP đang pending quá lâu và gửi cảnh báo. Bao gồm: nhắc nhở sau 3 ngày, weekly digest mỗi thứ 2.",
+    "version": "1.0.0",
+    "author": "NPP Automation System"
+  },
+  "configuration": {
+    "sharepoint_site_url": "https://YOUR-TENANT.sharepoint.com/sites/YOUR-SITE",
+    "sharepoint_list_name": "NPP Account Tracking",
+    "alert_after_days": 3,
+    "notification_email": "YOUR-EMAIL@company.com",
+    "weekly_digest_day": "Monday"
+  },
+  "flows": {
+    "flow_4a_overdue_alert": {
+      "name": "Flow 4a - Cảnh báo yêu cầu quá hạn (chạy hàng ngày)",
+      "definition": {
+        "triggers": {
+          "Recurrence_Daily": {
+            "type": "Recurrence",
+            "recurrence": {
+              "frequency": "Day",
+              "interval": 1,
+              "schedule": {
+                "hours": ["9"],
+                "minutes": ["0"]
+              },
+              "timeZone": "SE Asia Standard Time"
+            },
+            "description": "Chạy mỗi ngày lúc 9:00 sáng (giờ Việt Nam)"
+          }
+        },
+        "actions": {
+          "Step_1_Calculate_Cutoff_Date": {
+            "type": "Compose",
+            "inputs": {
+              "cutoff_date": "@addDays(utcNow(), -3, 'yyyy-MM-ddTHH:mm:ssZ')",
+              "_comment": "Tính ngày 3 ngày trước để lọc các yêu cầu quá hạn"
+            },
+            "description": "Tính ngày cutoff (3 ngày trước)"
+          },
+          "Step_2_Get_Overdue_Items": {
+            "type": "ApiConnection",
+            "inputs": {
+              "host": {
+                "connection": {
+                  "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+                }
+              },
+              "method": "get",
+              "path": "/datasets/@{encodeURIComponent(encodeURIComponent('YOUR-SHAREPOINT-SITE-URL'))}/tables/@{encodeURIComponent(encodeURIComponent('YOUR-LIST-GUID'))}/items",
+              "queries": {
+                "$filter": "TrangThai eq 'Đang chờ xử lý' and NgayYeuCau le '@{outputs('Step_1_Calculate_Cutoff_Date')?['cutoff_date']}'"
+              }
+            },
+            "description": "Lấy danh sách yêu cầu đang chờ xử lý quá 3 ngày"
+          },
+          "Step_3_Check_If_Overdue_Exists": {
+            "type": "If",
+            "expression": {
+              "greater": ["@length(outputs('Step_2_Get_Overdue_Items')?['body/value'])", 0]
+            },
+            "actions": {
+              "Step_4_Build_Alert_Table": {
+                "type": "Table",
+                "inputs": {
+                  "from": "@outputs('Step_2_Get_Overdue_Items')?['body/value']",
+                  "format": "HTML",
+                  "columns": [
+                    { "header": "Loại Yêu Cầu", "value": "@item()?['LoaiYeuCau']" },
+                    { "header": "Tên NPP", "value": "@item()?['TenNPP']" },
+                    { "header": "Ngày Yêu Cầu", "value": "@formatDateTime(item()?['NgayYeuCau'], 'dd/MM/yyyy')" },
+                    { "header": "Số ngày chờ", "value": "@div(sub(ticks(utcNow()), ticks(item()?['NgayYeuCau'])), 864000000000)" },
+                    { "header": "Người Yêu Cầu", "value": "@item()?['EmailNguoiYeuCau']" }
+                  ]
+                },
+                "description": "Tạo bảng HTML danh sách yêu cầu quá hạn"
+              },
+              "Step_5_Send_Overdue_Alert": {
+                "type": "ApiConnection",
+                "inputs": {
+                  "host": {
+                    "connection": {
+                      "name": "@parameters('$connections')['office365']['connectionId']"
+                    }
+                  },
+                  "method": "post",
+                  "path": "/v2/Mail",
+                  "body": {
+                    "To": "YOUR-EMAIL@company.com",
+                    "Subject": "🔔 NPP Automation - @{length(outputs('Step_2_Get_Overdue_Items')?['body/value'])} yêu cầu NPP đang chờ xử lý quá 3 ngày",
+                    "Body": "<h2>⚠️ Cảnh báo: Yêu cầu NPP quá hạn</h2><p>Có <b>@{length(outputs('Step_2_Get_Overdue_Items')?['body/value'])}</b> yêu cầu NPP đã chờ xử lý quá 3 ngày mà chưa có email xác nhận hoàn tất.</p><h3>Chi tiết:</h3>@{outputs('Step_4_Build_Alert_Table')}<br/><p>Vui lòng kiểm tra và follow-up các yêu cầu trên.</p><p><a href='YOUR-SHAREPOINT-SITE-URL/Lists/NPP%20Account%20Tracking'>📋 Mở SharePoint List</a></p>",
+                    "Importance": "High"
+                  }
+                },
+                "description": "Gửi email cảnh báo danh sách yêu cầu quá hạn"
+              }
+            },
+            "else": {
+              "_comment": "Không có yêu cầu quá hạn - không gửi cảnh báo"
+            },
+            "description": "Kiểm tra có yêu cầu quá hạn không"
+          }
+        }
+      }
+    },
+    "flow_4b_weekly_digest": {
+      "name": "Flow 4b - Weekly Digest (chạy mỗi thứ 2)",
+      "definition": {
+        "triggers": {
+          "Recurrence_Weekly": {
+            "type": "Recurrence",
+            "recurrence": {
+              "frequency": "Week",
+              "interval": 1,
+              "schedule": {
+                "weekDays": ["Monday"],
+                "hours": ["8"],
+                "minutes": ["30"]
+              },
+              "timeZone": "SE Asia Standard Time"
+            },
+            "description": "Chạy mỗi thứ 2 lúc 8:30 sáng (giờ Việt Nam)"
+          }
+        },
+        "actions": {
+          "Step_1_Get_All_Pending_Items": {
+            "type": "ApiConnection",
+            "inputs": {
+              "host": {
+                "connection": {
+                  "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+                }
+              },
+              "method": "get",
+              "path": "/datasets/@{encodeURIComponent(encodeURIComponent('YOUR-SHAREPOINT-SITE-URL'))}/tables/@{encodeURIComponent(encodeURIComponent('YOUR-LIST-GUID'))}/items",
+              "queries": {
+                "$filter": "TrangThai ne 'Hoàn tất'"
+              }
+            },
+            "description": "Lấy tất cả yêu cầu chưa hoàn tất"
+          },
+          "Step_2_Get_Completed_This_Week": {
+            "type": "ApiConnection",
+            "inputs": {
+              "host": {
+                "connection": {
+                  "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+                }
+              },
+              "method": "get",
+              "path": "/datasets/@{encodeURIComponent(encodeURIComponent('YOUR-SHAREPOINT-SITE-URL'))}/tables/@{encodeURIComponent(encodeURIComponent('YOUR-LIST-GUID'))}/items",
+              "queries": {
+                "$filter": "TrangThai eq 'Hoàn tất' and NgayHoanTat ge '@{addDays(utcNow(), -7, 'yyyy-MM-ddTHH:mm:ssZ')}'"
+              }
+            },
+            "description": "Lấy yêu cầu hoàn tất trong 7 ngày qua"
+          },
+          "Step_3_Build_Pending_Table": {
+            "type": "Table",
+            "inputs": {
+              "from": "@outputs('Step_1_Get_All_Pending_Items')?['body/value']",
+              "format": "HTML",
+              "columns": [
+                { "header": "Loại", "value": "@item()?['LoaiYeuCau']" },
+                { "header": "Tên NPP", "value": "@item()?['TenNPP']" },
+                { "header": "Ngày Yêu Cầu", "value": "@formatDateTime(item()?['NgayYeuCau'], 'dd/MM/yyyy')" },
+                { "header": "Trạng Thái", "value": "@item()?['TrangThai']" },
+                { "header": "Người YC", "value": "@item()?['EmailNguoiYeuCau']" }
+              ]
+            }
+          },
+          "Step_4_Build_Completed_Table": {
+            "type": "Table",
+            "inputs": {
+              "from": "@outputs('Step_2_Get_Completed_This_Week')?['body/value']",
+              "format": "HTML",
+              "columns": [
+                { "header": "Loại", "value": "@item()?['LoaiYeuCau']" },
+                { "header": "Tên NPP", "value": "@item()?['TenNPP']" },
+                { "header": "Mã NPP", "value": "@item()?['MaNPP']" },
+                { "header": "Loại Account", "value": "@item()?['LoaiAccount']" },
+                { "header": "Ngày Hoàn Tất", "value": "@formatDateTime(item()?['NgayHoanTat'], 'dd/MM/yyyy')" }
+              ]
+            }
+          },
+          "Step_5_Send_Weekly_Digest": {
+            "type": "ApiConnection",
+            "inputs": {
+              "host": {
+                "connection": {
+                  "name": "@parameters('$connections')['office365']['connectionId']"
+                }
+              },
+              "method": "post",
+              "path": "/v2/Mail",
+              "body": {
+                "To": "YOUR-EMAIL@company.com",
+                "Subject": "📊 NPP Weekly Digest - Tuần @{formatDateTime(utcNow(), 'dd/MM/yyyy')}",
+                "Body": "<h2>📊 Báo cáo NPP hàng tuần</h2><h3>📌 Yêu cầu đang pending (@{length(outputs('Step_1_Get_All_Pending_Items')?['body/value'])} items):</h3>@{outputs('Step_3_Build_Pending_Table')}<br/><h3>✅ Hoàn tất trong tuần (@{length(outputs('Step_2_Get_Completed_This_Week')?['body/value'])} items):</h3>@{outputs('Step_4_Build_Completed_Table')}<br/><p><a href='YOUR-SHAREPOINT-SITE-URL/Lists/NPP%20Account%20Tracking'>📋 Mở SharePoint List</a></p>"
+              }
+            },
+            "description": "Gửi email weekly digest tổng hợp"
+          }
+        }
+      }
+    }
+  },
+  "connectionReferences": {
+    "office365": {
+      "connectionName": "shared_office365",
+      "source": "Embedded",
+      "id": "/providers/Microsoft.PowerApps/apis/shared_office365",
+      "displayName": "Office 365 Outlook"
+    },
+    "sharepointonline": {
+      "connectionName": "shared_sharepointonline",
+      "source": "Embedded",
+      "id": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "displayName": "SharePoint"
+    }
+  }
+}
