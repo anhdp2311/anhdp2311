@@ -36,7 +36,7 @@
           "Step_1_Calculate_Cutoff_Date": {
             "type": "Compose",
             "inputs": {
-              "cutoff_date": "@addDays(utcNow(), -3, 'yyyy-MM-ddTHH:mm:ssZ')",
+              "cutoff_date": "@formatDateTime(addDays(utcNow(), -3), 'yyyy-MM-ddTHH:mm:ssZ')",
               "_comment": "Tính ngày 3 ngày trước để lọc các yêu cầu quá hạn"
             },
             "description": "Tính ngày cutoff (3 ngày trước)"
@@ -153,7 +153,7 @@
               "method": "get",
               "path": "/datasets/@{encodeURIComponent(encodeURIComponent('YOUR-SHAREPOINT-SITE-URL'))}/tables/@{encodeURIComponent(encodeURIComponent('YOUR-LIST-GUID'))}/items",
               "queries": {
-                "$filter": "TrangThai eq 'Hoàn tất' and NgayHoanTat ge '@{addDays(utcNow(), -7, 'yyyy-MM-ddTHH:mm:ssZ')}'"
+                "$filter": "TrangThai eq 'Hoàn tất' and NgayHoanTat ge '@{formatDateTime(addDays(utcNow(), -7), 'yyyy-MM-ddTHH:mm:ssZ')}'"
               }
             },
             "description": "Lấy yêu cầu hoàn tất trong 7 ngày qua"

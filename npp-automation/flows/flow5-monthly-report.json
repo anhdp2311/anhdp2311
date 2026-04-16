@@ -36,7 +36,7 @@
         "inputs": {
           "report_month": "@formatDateTime(addDays(utcNow(), -2), 'yyyy-MM')",
           "report_month_display": "@formatDateTime(addDays(utcNow(), -2), 'MM/yyyy')",
-          "period_start": "@startOfMonth(addDays(utcNow(), -2), 'yyyy-MM-ddTHH:mm:ssZ')",
+          "period_start": "@formatDateTime(startOfMonth(addDays(utcNow(), -2)), 'yyyy-MM-ddTHH:mm:ssZ')",
           "period_end": "@formatDateTime(utcNow(), 'yyyy-MM-ddTHH:mm:ssZ')",
           "_comment": "Tính khoảng thời gian báo cáo = tháng trước"
         },
