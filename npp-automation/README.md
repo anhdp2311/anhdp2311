@@ -81,6 +81,7 @@ npp-automation/
 
 ## Tài Liệu
 
-- [📘 Hướng dẫn triển khai](docs/deployment-guide.md)
+- [📖 **Hướng dẫn thủ công từng bước (KHÔNG cần script)**](docs/step-by-step-manual-guide.md) ⭐ Dành cho môi trường công ty
+- [📘 Hướng dẫn triển khai (dùng script)](docs/deployment-guide.md)
 - [📗 Hướng dẫn sử dụng](docs/user-guide.md)
 - [🔧 Xử lý sự cố](docs/troubleshooting.md)

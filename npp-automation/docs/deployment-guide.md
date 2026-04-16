@@ -38,6 +38,8 @@
 
 ## 2. Giai Đoạn 1: Thiết Lập SharePoint List
 
+> 💡 **Không chạy được script?** Xem [Hướng dẫn thủ công từng bước](step-by-step-manual-guide.md) – hướng dẫn chi tiết từng click, không cần PowerShell.
+
 ### Cách 1: Dùng script tự động (khuyến nghị)
 
 1. Mở PowerShell (Run as Administrator)
